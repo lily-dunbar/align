@@ -12,7 +12,10 @@ Then:
 ```bash
 cp .env.example .env.local
 # Edit .env.local and paste your DATABASE_URL (and other secrets as you add features).
+npm run db:migrate
 ```
+
+The `db:migrate` script applies SQL in `drizzle/` to your database (requires a non-empty `DATABASE_URL` in `.env.local`).
 
 **Optional:** if you use Docker locally instead, run `docker compose up -d` and set `DATABASE_URL=postgresql://align:align@localhost:54332/align` (see `docker-compose.yml`).
 

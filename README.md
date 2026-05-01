@@ -21,7 +21,7 @@ If you previously applied the old `users`-only migration, the current initial mi
 
 ### Auth (Auth.js)
 
-Sign-in uses **GitHub OAuth**. Add `AUTH_GITHUB_ID` and `AUTH_GITHUB_SECRET` to `.env.local` from a [GitHub OAuth App](https://github.com/settings/developers) (Authorization callback URL: `http://localhost:3000/api/auth/callback/github` for local dev). Routes live at `/api/auth/*`.
+Sign-in uses **GitHub OAuth**. Add `AUTH_GITHUB_ID` and `AUTH_GITHUB_SECRET` to `.env.local` from a [GitHub OAuth App](https://github.com/settings/developers) (Authorization callback URL: `http://localhost:3000/api/auth/callback/github` for local dev). Open **`http://localhost:3000/auth/signin`** and use **Continue with GitHub** (Auth.js v5 does not ship the old `/api/auth/signin` page). API routes still live under `/api/auth/*`.
 
 **Optional:** if you use Docker locally instead, run `docker compose up -d` and set `DATABASE_URL=postgresql://align:align@localhost:54332/align` (see `docker-compose.yml`).
 

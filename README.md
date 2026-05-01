@@ -15,7 +15,7 @@ cp .env.example .env.local
 npm run db:migrate
 ```
 
-The `db:migrate` script applies SQL in `drizzle/` to your database (requires a non-empty `DATABASE_URL` in `.env.local`).
+The `db:migrate` script applies SQL in `drizzle/` to your database (requires a non-empty `DATABASE_URL` in `.env.local`). **Save** `.env.local` before migrating; Drizzle reads the file from disk, not unsaved editor buffers.
 
 **Optional:** if you use Docker locally instead, run `docker compose up -d` and set `DATABASE_URL=postgresql://align:align@localhost:54332/align` (see `docker-compose.yml`).
 

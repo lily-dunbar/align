@@ -1,0 +1,1 @@
+ALTER TABLE "user_display_preferences" ADD COLUMN "pattern_threshold_percent" integer DEFAULT 15 NOT NULL;

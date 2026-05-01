@@ -1,0 +1,1 @@
+ALTER TABLE "user_display_preferences" DROP COLUMN "align_mentor_enabled";

@@ -8,6 +8,7 @@ import {
   getStravaTokenUrl,
   verifyStravaState,
 } from "@/lib/strava/oauth";
+import { sanitizeOAuthReturnTo } from "@/lib/oauth-return-to";
 
 type StravaTokenResponse = {
   token_type: string;
@@ -21,6 +22,28 @@ type StravaTokenResponse = {
   };
 };
 
+function redirectWithStravaQuery(
+  appBase: string,
+  path: string,
+  params: Record<string, string>,
+) {
+  const out = new URL(path, appBase);
+  for (const [k, v] of Object.entries(params)) {
+    out.searchParams.set(k, v);
+  }
+  return NextResponse.redirect(out);
+}
+
+function pathFromStravaState(stateParam: string | null): string | undefined {
+  if (!stateParam) return undefined;
+  try {
+    const parsed = verifyStravaState(stateParam);
+    return sanitizeOAuthReturnTo(parsed.returnTo) ?? "/";
+  } catch {
+    return undefined;
+  }
+}
+
 export async function GET(request: NextRequest) {
   const appBase = process.env.AUTH_URL ?? "http://localhost:4000";
 
@@ -30,13 +53,15 @@ export async function GET(request: NextRequest) {
   const authError = url.searchParams.get("error");
 
   if (authError) {
-    return NextResponse.redirect(
-      new URL(`/?strava_error=${encodeURIComponent(authError)}`, appBase),
-    );
+    const path = pathFromStravaState(state) ?? "/";
+    return redirectWithStravaQuery(appBase, path, { strava_error: authError });
   }
 
   if (!code || !state) {
-    return NextResponse.redirect(new URL("/?strava_error=missing_code_or_state", appBase));
+    const path = pathFromStravaState(state) ?? "/";
+    return redirectWithStravaQuery(appBase, path, {
+      strava_error: "missing_code_or_state",
+    });
   }
 
   let parsedState;
@@ -44,15 +69,16 @@ export async function GET(request: NextRequest) {
     parsedState = verifyStravaState(state);
   } catch (error) {
     const message = error instanceof Error ? error.message : "invalid_state";
-    return NextResponse.redirect(
-      new URL(`/?strava_error=${encodeURIComponent(message)}`, appBase),
-    );
+    return redirectWithStravaQuery(appBase, "/", { strava_error: message });
   }
 
   const clientId = process.env.STRAVA_CLIENT_ID;
   const clientSecret = process.env.STRAVA_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    return NextResponse.redirect(new URL("/?strava_error=missing_client_config", appBase));
+    const path = sanitizeOAuthReturnTo(parsedState.returnTo) ?? "/";
+    return redirectWithStravaQuery(appBase, path, {
+      strava_error: "missing_client_config",
+    });
   }
 
   const body = new URLSearchParams({
@@ -74,12 +100,11 @@ export async function GET(request: NextRequest) {
 
   if (!tokenResp.ok) {
     const details = await tokenResp.text();
-    return NextResponse.redirect(
-      new URL(
-        `/?strava_error=token_exchange_failed&strava_details=${encodeURIComponent(details.slice(0, 400))}`,
-        appBase,
-      ),
-    );
+    const path = sanitizeOAuthReturnTo(parsedState.returnTo) ?? "/";
+    return redirectWithStravaQuery(appBase, path, {
+      strava_error: "token_exchange_failed",
+      strava_details: details.slice(0, 400),
+    });
   }
 
   const tokenJson = (await tokenResp.json()) as StravaTokenResponse;
@@ -123,5 +148,6 @@ export async function GET(request: NextRequest) {
     await db.insert(stravaTokens).values({ userId: parsedState.userId, ...values });
   }
 
-  return NextResponse.redirect(new URL("/?strava=connected", appBase));
+  const pathOk = sanitizeOAuthReturnTo(parsedState.returnTo) ?? "/";
+  return redirectWithStravaQuery(appBase, pathOk, { strava: "connected" });
 }

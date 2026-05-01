@@ -76,3 +76,7 @@ export async function getUserIdForStepIngestToken(stepIngestToken: string) {
   });
   return row?.userId ?? null;
 }
+
+export async function deleteStepIngestToken(userId: string) {
+  await db.delete(stepIngestTokens).where(eq(stepIngestTokens.userId, userId));
+}

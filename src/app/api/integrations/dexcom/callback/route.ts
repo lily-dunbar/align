@@ -8,6 +8,7 @@ import {
   getDexcomTokenUrl,
   verifyDexcomState,
 } from "@/lib/dexcom/oauth";
+import { sanitizeOAuthReturnTo } from "@/lib/oauth-return-to";
 
 type DexcomTokenResponse = {
   access_token: string;
@@ -17,6 +18,28 @@ type DexcomTokenResponse = {
   scope?: string;
 };
 
+function redirectWithDexcomQuery(
+  appBase: string,
+  path: string,
+  params: Record<string, string>,
+) {
+  const out = new URL(path, appBase);
+  for (const [k, v] of Object.entries(params)) {
+    out.searchParams.set(k, v);
+  }
+  return NextResponse.redirect(out);
+}
+
+function pathFromDexcomState(stateParam: string | null): string | undefined {
+  if (!stateParam) return undefined;
+  try {
+    const parsed = verifyDexcomState(stateParam);
+    return sanitizeOAuthReturnTo(parsed.returnTo) ?? "/";
+  } catch {
+    return undefined;
+  }
+}
+
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
@@ -25,15 +48,15 @@ export async function GET(request: NextRequest) {
 
   const appBase = process.env.AUTH_URL ?? "http://localhost:4000";
   if (authError) {
-    return NextResponse.redirect(
-      new URL(`/?dexcom_error=${encodeURIComponent(authError)}`, appBase),
-    );
+    const path = pathFromDexcomState(state) ?? "/";
+    return redirectWithDexcomQuery(appBase, path, { dexcom_error: authError });
   }
 
   if (!code || !state) {
-    return NextResponse.redirect(
-      new URL("/?dexcom_error=missing_code_or_state", appBase),
-    );
+    const path = pathFromDexcomState(state) ?? "/";
+    return redirectWithDexcomQuery(appBase, path, {
+      dexcom_error: "missing_code_or_state",
+    });
   }
 
   let parsedState;
@@ -41,17 +64,16 @@ export async function GET(request: NextRequest) {
     parsedState = verifyDexcomState(state);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Invalid state";
-    return NextResponse.redirect(
-      new URL(`/?dexcom_error=${encodeURIComponent(message)}`, appBase),
-    );
+    return redirectWithDexcomQuery(appBase, "/", { dexcom_error: message });
   }
 
   const clientId = process.env.DEXCOM_CLIENT_ID;
   const clientSecret = process.env.DEXCOM_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    return NextResponse.redirect(
-      new URL("/?dexcom_error=missing_dexcom_client_config", appBase),
-    );
+    const path = sanitizeOAuthReturnTo(parsedState.returnTo) ?? "/";
+    return redirectWithDexcomQuery(appBase, path, {
+      dexcom_error: "missing_dexcom_client_config",
+    });
   }
 
   const body = new URLSearchParams({
@@ -73,12 +95,11 @@ export async function GET(request: NextRequest) {
 
   if (!tokenResp.ok) {
     const details = await tokenResp.text();
-    return NextResponse.redirect(
-      new URL(
-        `/?dexcom_error=${encodeURIComponent("token_exchange_failed")}&dexcom_details=${encodeURIComponent(details.slice(0, 400))}`,
-        appBase,
-      ),
-    );
+    const path = sanitizeOAuthReturnTo(parsedState.returnTo) ?? "/";
+    return redirectWithDexcomQuery(appBase, path, {
+      dexcom_error: "token_exchange_failed",
+      dexcom_details: details.slice(0, 400),
+    });
   }
 
   const tokenJson = (await tokenResp.json()) as DexcomTokenResponse;
@@ -127,5 +148,6 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  return NextResponse.redirect(new URL("/?dexcom=connected", appBase));
+  const pathOk = sanitizeOAuthReturnTo(parsedState.returnTo) ?? "/";
+  return redirectWithDexcomQuery(appBase, pathOk, { dexcom: "connected" });
 }

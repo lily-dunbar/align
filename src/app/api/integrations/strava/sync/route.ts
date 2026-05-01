@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
+import { sanitizeOAuthReturnTo } from "@/lib/oauth-return-to";
 import { syncStravaActivities } from "@/lib/strava/client";
 
 function appBaseUrl() {
@@ -28,7 +29,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, ...result });
     }
 
-    const redirectUrl = new URL("/?strava_sync=ok", appBaseUrl());
+    const basePath = sanitizeOAuthReturnTo(url.searchParams.get("return_to")) ?? "/";
+    const redirectUrl = new URL(basePath, appBaseUrl());
+    redirectUrl.searchParams.set("strava_sync", "ok");
     redirectUrl.searchParams.set("strava_fetched", String(result.fetched));
     redirectUrl.searchParams.set("strava_inserted", String(result.inserted));
     redirectUrl.searchParams.set("strava_updated", String(result.updated));
@@ -41,7 +44,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: message }, { status: 502 });
     }
 
-    const redirectUrl = new URL("/?strava_sync=error", appBaseUrl());
+    const basePath = sanitizeOAuthReturnTo(url.searchParams.get("return_to")) ?? "/";
+    const redirectUrl = new URL(basePath, appBaseUrl());
+    redirectUrl.searchParams.set("strava_sync", "error");
     redirectUrl.searchParams.set("strava_sync_message", message.slice(0, 300));
     return NextResponse.redirect(redirectUrl);
   }

@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 import { syncDexcomGlucoseReadings } from "@/lib/dexcom/client";
+import { sanitizeOAuthReturnTo } from "@/lib/oauth-return-to";
 
 function appBaseUrl() {
   return process.env.AUTH_URL ?? "http://localhost:4000";
@@ -25,7 +26,9 @@ export async function POST(request: Request) {
     if (wantsJson) {
       return NextResponse.json({ ok: true, ...result });
     }
-    const redirectUrl = new URL("/?dexcom_sync=ok", appBaseUrl());
+    const basePath = sanitizeOAuthReturnTo(url.searchParams.get("return_to")) ?? "/";
+    const redirectUrl = new URL(basePath, appBaseUrl());
+    redirectUrl.searchParams.set("dexcom_sync", "ok");
     redirectUrl.searchParams.set("fetched", String(result.fetched));
     redirectUrl.searchParams.set("inserted", String(result.inserted));
     redirectUrl.searchParams.set("updated", String(result.updated));
@@ -36,7 +39,9 @@ export async function POST(request: Request) {
     if (wantsJson) {
       return NextResponse.json({ error: message }, { status: 502 });
     }
-    const redirectUrl = new URL("/?dexcom_sync=error", appBaseUrl());
+    const basePath = sanitizeOAuthReturnTo(url.searchParams.get("return_to")) ?? "/";
+    const redirectUrl = new URL(basePath, appBaseUrl());
+    redirectUrl.searchParams.set("dexcom_sync", "error");
     redirectUrl.searchParams.set("dexcom_sync_message", message.slice(0, 300));
     return NextResponse.redirect(redirectUrl);
   }

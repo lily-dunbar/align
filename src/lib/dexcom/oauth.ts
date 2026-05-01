@@ -1,9 +1,12 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
+import { sanitizeOAuthReturnTo } from "@/lib/oauth-return-to";
+
 type DexcomStatePayload = {
   nonce: string;
   userId: string;
   issuedAt: number;
+  returnTo?: string;
 };
 
 const STATE_TTL_MS = 10 * 60 * 1000;
@@ -37,11 +40,13 @@ function sign(payloadB64: string, secret: string) {
   return b64url(createHmac("sha256", secret).update(payloadB64).digest());
 }
 
-export function createDexcomState(userId: string) {
+export function createDexcomState(userId: string, returnToRaw?: string | null) {
+  const returnTo = sanitizeOAuthReturnTo(returnToRaw ?? undefined);
   const payload: DexcomStatePayload = {
     nonce: b64url(randomBytes(12)),
     userId,
     issuedAt: Date.now(),
+    ...(returnTo ? { returnTo } : {}),
   };
 
   const payloadB64 = b64url(JSON.stringify(payload));

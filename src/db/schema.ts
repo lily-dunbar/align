@@ -275,6 +275,8 @@ export const manualWorkouts = pgTable(
     workoutType: text("workout_type").notNull(),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
     endedAt: timestamp("ended_at", { withTimezone: true }),
+    distanceMeters: integer("distance_meters"),
+    pace: text("pace"),
     durationMin: integer("duration_min"),
     intensity: text("intensity"),
     notes: text("notes"),
@@ -349,3 +351,25 @@ export const sleepWindows = pgTable(
     ),
   }),
 );
+
+export const userDisplayPreferences = pgTable("user_display_preferences", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  showSteps: boolean("show_steps").notNull().default(true),
+  showActivity: boolean("show_activity").notNull().default(true),
+  showSleep: boolean("show_sleep").notNull().default(true),
+  showFood: boolean("show_food").notNull().default(true),
+  /** Minimum association strength (%) for surfacing a pattern — default 15. */
+  patternThresholdPercent: integer("pattern_threshold_percent").notNull().default(15),
+  targetLowMgdl: integer("target_low_mgdl").notNull().default(70),
+  targetHighMgdl: integer("target_high_mgdl").notNull().default(180),
+  targetTirPercent: integer("target_tir_percent").notNull().default(70),
+  targetStepsPerDay: integer("target_steps_per_day").notNull().default(10000),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});

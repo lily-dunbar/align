@@ -7,13 +7,16 @@ import {
   getDexcomRedirectUri,
 } from "@/lib/dexcom/oauth";
 
-export async function GET() {
+export async function GET(request: Request) {
   const { userId } = await auth();
   if (!userId) {
     return NextResponse.redirect(
       new URL("/sign-in", process.env.AUTH_URL ?? "http://localhost:4000"),
     );
   }
+
+  const { searchParams } = new URL(request.url);
+  const returnTo = searchParams.get("return_to");
 
   const clientId = process.env.DEXCOM_CLIENT_ID;
   if (!clientId) {
@@ -23,7 +26,7 @@ export async function GET() {
     );
   }
 
-  const state = createDexcomState(userId);
+  const state = createDexcomState(userId, returnTo);
   const authorizeUrl = new URL(getDexcomAuthorizeUrl());
   authorizeUrl.searchParams.set("client_id", clientId);
   authorizeUrl.searchParams.set("redirect_uri", getDexcomRedirectUri());

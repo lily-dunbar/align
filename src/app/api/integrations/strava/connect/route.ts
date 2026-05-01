@@ -7,7 +7,7 @@ import {
   getStravaRedirectUri,
 } from "@/lib/strava/oauth";
 
-export async function GET() {
+export async function GET(request: Request) {
   const { userId } = await auth();
   const appBase = process.env.AUTH_URL ?? "http://localhost:4000";
 
@@ -15,12 +15,15 @@ export async function GET() {
     return NextResponse.redirect(new URL("/sign-in", appBase));
   }
 
+  const { searchParams } = new URL(request.url);
+  const returnTo = searchParams.get("return_to");
+
   const clientId = process.env.STRAVA_CLIENT_ID;
   if (!clientId) {
     return NextResponse.redirect(new URL("/?strava_error=missing_client_id", appBase));
   }
 
-  const state = createStravaState(userId);
+  const state = createStravaState(userId, returnTo);
   const authorizeUrl = new URL(getStravaAuthorizeUrl());
   authorizeUrl.searchParams.set("client_id", clientId);
   authorizeUrl.searchParams.set("redirect_uri", getStravaRedirectUri());

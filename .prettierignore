@@ -5,3 +5,4 @@ out
 coverage
 .vercel
 package-lock.json
+drizzle/*.sql

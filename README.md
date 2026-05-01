@@ -17,6 +17,12 @@ npm run db:migrate
 
 The `db:migrate` script applies SQL in `drizzle/` to your database (requires a non-empty `DATABASE_URL` in `.env.local`). **Save** `.env.local` before migrating; Drizzle reads the file from disk, not unsaved editor buffers.
 
+If you previously applied the old `users`-only migration, the current initial migration **drops `users`** and creates Auth.js tables (`user`, `account`, `session`, `verificationToken`, `authenticator`). If Drizzle reports a migration conflict, truncate the `__drizzle_migrations` table (or reset the dev database) once, then run `npm run db:migrate` again.
+
+### Auth (Auth.js)
+
+Sign-in uses **GitHub OAuth**. Add `AUTH_GITHUB_ID` and `AUTH_GITHUB_SECRET` to `.env.local` from a [GitHub OAuth App](https://github.com/settings/developers) (Authorization callback URL: `http://localhost:3000/api/auth/callback/github` for local dev). Routes live at `/api/auth/*`.
+
 **Optional:** if you use Docker locally instead, run `docker compose up -d` and set `DATABASE_URL=postgresql://align:align@localhost:54332/align` (see `docker-compose.yml`).
 
 ## Getting Started

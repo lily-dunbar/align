@@ -96,6 +96,70 @@ Public URL options:
 - **Best:** deploy on Vercel and use `https://<your-domain>/api/ingest/steps/:token`
 - **Local testing:** use a tunnel (Cloudflare Tunnel / ngrok) and point Shortcut to that HTTPS URL
 
+#### Apple Shortcut JSON contract
+
+Use this contract for requests sent to:
+
+- `POST /api/ingest/steps/:stepIngestToken`
+
+Headers (one required for auth):
+
+- `X-Shortcut-Secret: <STEPS_INGEST_SECRET>` (**recommended**)
+- or `Authorization: Bearer <STEPS_INGEST_SECRET>`
+
+Content type:
+
+- `Content-Type: application/json`
+
+Body option A (single sample):
+
+```json
+{
+  "timestamp": "2026-05-01T12:00:00-07:00",
+  "steps": 523
+}
+```
+
+Body option B (batch samples):
+
+```json
+{
+  "samples": [
+    { "timestamp": "2026-05-01T12:00:00-07:00", "steps": 523 },
+    { "timestamp": "2026-05-01T13:00:00-07:00", "steps": 410 }
+  ]
+}
+```
+
+Validation rules:
+
+- `timestamp`: required string parseable by JavaScript `Date` (ISO 8601 recommended)
+- `steps`: required finite number; rounded to integer and clamped to `>= 0`
+- When using `samples`, each row must include both fields above
+
+Ingestion behavior:
+
+- Server buckets each sample to UTC hour (`:00:00`)
+- Upsert key: `(user_id, bucket_start, source)` with source = `apple_shortcuts`
+- Re-sending same hour updates existing row (idempotent)
+
+Success response (`200`):
+
+```json
+{
+  "ok": true,
+  "userId": "user_xxx",
+  "received": 2,
+  "inserted": 1,
+  "updated": 1
+}
+```
+
+Error responses:
+
+- `401` when secret header is missing/invalid
+- `400` for invalid token, bad JSON, invalid timestamp/steps, or other validation errors
+
 ## Getting Started
 
 First, run the development server:

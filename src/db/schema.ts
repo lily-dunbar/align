@@ -243,3 +243,109 @@ export const hourlySteps = pgTable(
     userBucketIdx: index("hourly_steps_user_bucket_idx").on(t.userId, t.bucketStart),
   }),
 );
+
+export const stepIngestTokens = pgTable(
+  "step_ingest_tokens",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => user.id, { onDelete: "cascade" }),
+    token: text("token").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    tokenIdx: index("step_ingest_tokens_token_idx").on(t.token),
+  }),
+);
+
+export const manualWorkouts = pgTable(
+  "manual_workouts",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    workoutType: text("workout_type").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    durationMin: integer("duration_min"),
+    intensity: text("intensity"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    userStartedIdx: index("manual_workouts_user_started_at_idx").on(
+      t.userId,
+      t.startedAt,
+    ),
+  }),
+);
+
+export const foodEntries = pgTable(
+  "food_entries",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    eatenAt: timestamp("eaten_at", { withTimezone: true }).notNull(),
+    title: text("title").notNull(),
+    carbsGrams: integer("carbs_grams"),
+    proteinGrams: integer("protein_grams"),
+    fatGrams: integer("fat_grams"),
+    calories: integer("calories"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    userEatenIdx: index("food_entries_user_eaten_at_idx").on(t.userId, t.eatenAt),
+  }),
+);
+
+export const sleepWindows = pgTable(
+  "sleep_windows",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    sleepStart: timestamp("sleep_start", { withTimezone: true }).notNull(),
+    sleepEnd: timestamp("sleep_end", { withTimezone: true }).notNull(),
+    source: text("source").notNull().default("manual"),
+    qualityScore: integer("quality_score"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    userSleepStartIdx: index("sleep_windows_user_sleep_start_idx").on(
+      t.userId,
+      t.sleepStart,
+    ),
+  }),
+);

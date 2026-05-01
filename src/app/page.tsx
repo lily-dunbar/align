@@ -138,12 +138,10 @@ export default async function Home({ searchParams }: HomeProps) {
             Debug Strava data
           </a>
           <a
-            href="/api/ingest/steps/token"
+            href="/settings"
             className="rounded border px-4 py-2 text-sm"
-            target="_blank"
-            rel="noreferrer"
           >
-            Get Steps ingest token
+            Settings
           </a>
         </div>
       ) : null}

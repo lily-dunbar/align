@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { hourlySteps, user } from "@/db/schema";
 import { verifyStepIngestToken } from "@/lib/steps/ingest-token";
+import { getUserIdForStepIngestToken } from "@/lib/steps/token-store";
 
 type StepSampleInput = {
   timestamp: string;
@@ -104,7 +105,11 @@ export async function POST(
     }
 
     const { stepIngestToken } = await context.params;
-    const { userId } = verifyStepIngestToken(stepIngestToken);
+    let userId = await getUserIdForStepIngestToken(stepIngestToken);
+    if (!userId) {
+      // Backward compatibility for previously generated signed tokens.
+      userId = verifyStepIngestToken(stepIngestToken).userId;
+    }
 
     const payload = await request.json();
     const samples = parseSamples(payload);

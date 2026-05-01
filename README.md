@@ -34,9 +34,67 @@ Set these in `.env.local`:
 
 For Vercel production, set the same Clerk keys and `AUTH_URL=https://<your-domain>`.
 
+### Dexcom OAuth (next step)
+
+Configure `DEXCOM_CLIENT_ID` and `DEXCOM_CLIENT_SECRET`, then open:
+
+- `http://localhost:4000/api/integrations/dexcom/connect`
+
+The callback route is:
+
+- `http://localhost:4000/api/integrations/dexcom/callback`
+
 If you see **“Another next dev server is already running”**, stop the old one first (Terminal: `kill` plus the PID it prints, or quit the other Terminal tab that is running `npm run dev`), then run `npm run dev` once.
 
 **Optional:** if you use Docker locally instead, run `docker compose up -d` and set `DATABASE_URL=postgresql://align:align@localhost:54332/align` (see `docker-compose.yml`).
+
+### Apple Shortcuts hourly steps ingest
+
+Steps endpoint format:
+
+- `POST /api/ingest/steps/:stepIngestToken`
+
+Auth:
+
+- Send `Authorization: Bearer <STEPS_INGEST_SECRET>` (or `X-Shortcut-Secret`)
+
+Generate your personal `stepIngestToken` while signed in:
+
+- Open `http://localhost:4000/api/ingest/steps/token`
+
+Body formats accepted:
+
+```json
+{ "timestamp": "2026-05-01T15:00:00Z", "steps": 523 }
+```
+
+or batch:
+
+```json
+{
+  "samples": [
+    { "timestamp": "2026-05-01T15:00:00Z", "steps": 523 },
+    { "timestamp": "2026-05-01T16:00:00Z", "steps": 410 }
+  ]
+}
+```
+
+Shortcut schedule (hourly):
+
+1. iOS Shortcuts → Automation → `+` → **Create Personal Automation**
+2. Choose **Time of Day**
+3. Pick a start time and set **Repeat: Hourly**
+4. Add action **Get Contents of URL**:
+   - URL = your `ingestUrl` from `/api/ingest/steps/token`
+   - Method = `POST`
+   - Headers = `Authorization: Bearer <STEPS_INGEST_SECRET>`
+   - Request Body = JSON payload above
+5. Turn off "Ask Before Running" for background execution.
+
+Public URL options:
+
+- **Best:** deploy on Vercel and use `https://<your-domain>/api/ingest/steps/:token`
+- **Local testing:** use a tunnel (Cloudflare Tunnel / ngrok) and point Shortcut to that HTTPS URL
 
 ## Getting Started
 

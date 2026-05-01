@@ -8,6 +8,34 @@
       "when": 1777613522308,
       "tag": "0000_spooky_lucky_pierre",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777646853574,
+      "tag": "0001_slimy_sabra",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777648280484,
+      "tag": "0002_late_vector",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1777648855321,
+      "tag": "0003_strange_sphinx",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1777649969102,
+      "tag": "0004_clammy_cobalt_man",
+      "breakpoints": true
     }
   ]
 }

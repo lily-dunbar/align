@@ -1,5 +1,21 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Database (Postgres)
+
+Use **Neon** or **Vercel Postgres** in production; both give you a single `DATABASE_URL` for serverless-friendly access.
+
+1. **Neon:** [Neon console](https://console.neon.tech) → create a project → **Connection details** → copy the pooled **URI** into `DATABASE_URL`.
+2. **Vercel Postgres:** [Vercel Storage](https://vercel.com/docs/storage/vercel-postgres) → create a Postgres database linked to your app → copy **`POSTGRES_URL`** (or the provided pooled URL) into `DATABASE_URL`.
+
+Then:
+
+```bash
+cp .env.example .env.local
+# Edit .env.local and paste your DATABASE_URL (and other secrets as you add features).
+```
+
+**Optional:** if you use Docker locally instead, run `docker compose up -d` and set `DATABASE_URL=postgresql://align:align@localhost:54332/align` (see `docker-compose.yml`).
+
 ## Getting Started
 
 First, run the development server:
@@ -16,7 +32,7 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+You can start editing the page by modifying `src/app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 

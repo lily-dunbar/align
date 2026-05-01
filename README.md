@@ -21,9 +21,9 @@ If you previously applied the old `users`-only migration, the current initial mi
 
 ### Auth (Auth.js)
 
-Sign-in uses **GitHub OAuth**. Add `AUTH_GITHUB_ID` and `AUTH_GITHUB_SECRET` to `.env.local` from a [GitHub OAuth App](https://github.com/settings/developers) (Authorization callback URL: `http://localhost:3000/api/auth/callback/github` for local dev). Open **`http://localhost:3000/auth/signin`** and use **Continue with GitHub** (Auth.js v5 does not ship the old `/api/auth/signin` page). API routes still live under `/api/auth/*`.
+Sign-in uses **GitHub OAuth**. Add `AUTH_GITHUB_ID` and `AUTH_GITHUB_SECRET` to `.env.local` from a [GitHub OAuth App](https://github.com/settings/developers) (Authorization callback URL: `http://localhost:4000/api/auth/callback/github` for local dev). Open **`http://localhost:4000/auth/signin`** and use **Continue with GitHub** (Auth.js v5 does not ship the old `/api/auth/signin` page). API routes still live under `/api/auth/*`.
 
-If `next dev` says **port 3000 is in use**, it may start on **3001**, **3002**, etc. Use that number in the URL (for example `http://localhost:3003/auth/signin`) and set **`AUTH_URL`** in `.env.local` to the same origin (for example `http://localhost:3003`). Your GitHub OAuth app **callback URL** must use the same port: `http://localhost:3003/api/auth/callback/github`.
+This project is pinned to port **4000**. Set **`AUTH_URL=http://localhost:4000`** in `.env.local` and set your GitHub OAuth app callback URL to **`http://localhost:4000/api/auth/callback/github`**.
 
 If you see **“Another next dev server is already running”**, stop the old one first (Terminal: `kill` plus the PID it prints, or quit the other Terminal tab that is running `npm run dev`), then run `npm run dev` once.
 
@@ -43,7 +43,7 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:4000](http://localhost:4000) with your browser to see the result.
 
 You can start editing the page by modifying `src/app/page.tsx`. The page auto-updates as you edit the file.
 

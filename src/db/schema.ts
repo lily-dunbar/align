@@ -1,4 +1,3 @@
-import type { AdapterAccountType } from "@auth/core/adapters";
 import {
   boolean,
   integer,
@@ -28,7 +27,7 @@ export const account = pgTable(
     userId: text("userId")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    type: text("type").$type<AdapterAccountType>().notNull(),
+    type: text("type").$type<string>().notNull(),
     provider: text("provider").notNull(),
     providerAccountId: text("providerAccountId").notNull(),
     refresh_token: text("refresh_token"),

@@ -5,10 +5,13 @@ import postgres from "postgres";
 
 import * as schema from "./schema";
 
-const url = process.env.DATABASE_URL;
-if (!url) {
+const rawUrl = process.env.DATABASE_URL?.trim();
+if (!rawUrl) {
   throw new Error("DATABASE_URL is not set");
 }
+
+// Guard against accidentally quoted env values in hosts like Vercel.
+const url = rawUrl.replace(/^["']|["']$/g, "");
 
 /** Single connection; use `prepare: false` for Neon transaction pooler. */
 const client = postgres(url, { max: 1, prepare: false });

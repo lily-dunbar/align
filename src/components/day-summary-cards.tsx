@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { DAY_DATA_CHANGED_EVENT } from "@/lib/day-view-events";
+import { useResolvedDayYmd } from "@/lib/use-resolved-day-ymd";
 
 type DaySummaryResponse = {
   targets?: {
@@ -41,6 +42,7 @@ function Card({
 }
 
 export function DaySummaryCards({ dateYmd }: Props) {
+  const resolvedDateYmd = useResolvedDayYmd(dateYmd);
   const [data, setData] = useState<DaySummaryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,7 +51,7 @@ export function DaySummaryCards({ dateYmd }: Props) {
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
       const resp = await fetch(
-        `/api/day?date=${encodeURIComponent(dateYmd)}&timeZone=${encodeURIComponent(tz)}`,
+        `/api/day?date=${encodeURIComponent(resolvedDateYmd)}&timeZone=${encodeURIComponent(tz)}`,
         { cache: "no-store" },
       );
       const json = (await resp.json()) as DaySummaryResponse & { error?: string };
@@ -58,7 +60,7 @@ export function DaySummaryCards({ dateYmd }: Props) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     }
-  }, [dateYmd]);
+  }, [resolvedDateYmd]);
 
   useEffect(() => {
     const id = requestAnimationFrame(() => {

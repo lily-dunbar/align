@@ -10,12 +10,18 @@ export type IntegrationSnapshot = {
     connected: boolean;
     lastSyncAt: string | null;
     shareCredentialsMode?: boolean;
+    /** True when Share env is set but this user hid the integration (cookie). */
+    shareUiDismissed?: boolean;
   };
   strava: { connected: boolean; lastSyncAt: string | null };
   steps: {
     connected: boolean;
     lastIngestAt: string | null;
     ingestUrl: string | null;
+    /** False when STEPS_INGEST_SECRET is missing — Shortcuts POSTs will fail. */
+    ingestSecretConfigured: boolean;
+    /** True when AUTH_URL points at localhost — phone Shortcuts cannot reach it. */
+    ingestUrlIsLocalDev: boolean;
   };
 };
 
@@ -37,9 +43,31 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
 
   async function disconnect(kind: "dexcom" | "strava" | "steps") {
     if (kind === "dexcom" && initial.dexcom.shareCredentialsMode) {
-      setNotice(
-        "Dexcom Share is configured with PYDEXCOM_* in server env. Remove those variables to disconnect; OAuth Connect is not used in this mode.",
-      );
+      if (
+        !window.confirm(
+          "Disconnect Dexcom Share for this account? Sync will stop until you choose Show Dexcom Share again. Server PYDEXCOM_* variables are unchanged—remove them to disable Share for everyone.",
+        )
+      ) {
+        return;
+      }
+      setBusy("disconnect-dexcom");
+      setNotice(null);
+      try {
+        const hide = await fetch("/api/integrations/dexcom/share-ui", { method: "POST" });
+        if (!hide.ok) {
+          const j = (await hide.json()) as { error?: string };
+          throw new Error(j.error ?? "Could not update Dexcom Share preference");
+        }
+        const resp = await fetch("/api/integrations/dexcom/disconnect", { method: "DELETE" });
+        const json = (await resp.json()) as { error?: string };
+        if (!resp.ok) throw new Error(json.error ?? "Disconnect failed");
+        setNotice("Dexcom Share disconnected for this account.");
+        router.refresh();
+      } catch (e) {
+        setNotice(e instanceof Error ? e.message : "Disconnect failed");
+      } finally {
+        setBusy(null);
+      }
       return;
     }
     if (!window.confirm(`Disconnect ${kind === "steps" ? "Apple Steps ingest" : kind}?`)) {
@@ -64,13 +92,44 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
     }
   }
 
+  async function showDexcomShareAgain() {
+    setBusy("show-dexcom-share");
+    setNotice(null);
+    try {
+      const resp = await fetch("/api/integrations/dexcom/share-ui", { method: "DELETE" });
+      const json = (await resp.json()) as { error?: string };
+      if (!resp.ok) throw new Error(json.error ?? "Could not restore Dexcom Share");
+      setNotice("Dexcom Share is active again for this account.");
+      router.refresh();
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Could not restore Dexcom Share");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function connectSteps() {
     setBusy("connect-steps");
     setNotice(null);
     try {
-      const resp = await fetch("/api/ingest/steps/token", { method: "GET" });
-      const json = (await resp.json()) as { error?: string };
-      if (!resp.ok) throw new Error(json.error ?? "Could not create ingest token");
+      const resp = await fetch("/api/ingest/steps/token", {
+        method: "GET",
+        credentials: "include",
+      });
+      const text = await resp.text();
+      let json: { error?: string } = {};
+      if (text) {
+        try {
+          json = JSON.parse(text) as { error?: string };
+        } catch {
+          throw new Error(
+            `Connect failed (HTTP ${resp.status}). If you are signed in, try refreshing the page.`,
+          );
+        }
+      }
+      if (!resp.ok) {
+        throw new Error(json.error ?? `Could not create ingest token (HTTP ${resp.status})`);
+      }
       setNotice("Apple Steps connected. Open View details to copy your ingest URL.");
       router.refresh();
     } catch (e) {
@@ -86,6 +145,8 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
     try {
       const resp = await fetch("/api/integrations/dexcom/sync?format=json", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lookbackDays: 30 }),
       });
       const json = (await resp.json()) as {
         error?: string;
@@ -166,7 +227,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 {initial.dexcom.connected ? (
                   initial.dexcom.shareCredentialsMode ? (
                     <>
-                      Connected via Dexcom Share (PYDEXCOM_* env). Last sync:{" "}
+                      Connected via Dexcom Share (server credentials). Last data sync:{" "}
                       {formatWhen(initial.dexcom.lastSyncAt)}
                     </>
                   ) : (
@@ -174,6 +235,11 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                       Connected · Last data sync: {formatWhen(initial.dexcom.lastSyncAt)}
                     </>
                   )
+                ) : initial.dexcom.shareCredentialsMode && initial.dexcom.shareUiDismissed ? (
+                  <>
+                    Dexcom Share is still configured on the server (PYDEXCOM_*), but you disconnected
+                    it for this account. Use Show Dexcom Share to sync again, or Connect for OAuth.
+                  </>
                 ) : (
                   <>Not connected — use Connect to sign in with Dexcom.</>
                 )}
@@ -181,21 +247,43 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
             </div>
             <div className="flex flex-wrap gap-2">
               {!initial.dexcom.connected ? (
-                <a
-                  className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50"
-                  href={`/api/integrations/dexcom/connect?return_to=${SETTINGS_RETURN}`}
-                >
-                  Connect
-                </a>
+                <>
+                  {initial.dexcom.shareCredentialsMode && initial.dexcom.shareUiDismissed ? (
+                    <button
+                      type="button"
+                      className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
+                      disabled={busy !== null}
+                      onClick={() => void showDexcomShareAgain()}
+                    >
+                      {busy === "show-dexcom-share" ? "Restoring…" : "Show Dexcom Share"}
+                    </button>
+                  ) : null}
+                  <a
+                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50"
+                    href={`/api/integrations/dexcom/connect?return_to=${SETTINGS_RETURN}`}
+                  >
+                    Connect
+                  </a>
+                </>
               ) : initial.dexcom.shareCredentialsMode ? (
-                <button
-                  type="button"
-                  className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
-                  disabled={busy !== null}
-                  onClick={() => void syncDexcom()}
-                >
-                  {busy === "sync-dexcom" ? "Syncing…" : "Sync"}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
+                    disabled={busy !== null}
+                    onClick={() => void syncDexcom()}
+                  >
+                    {busy === "sync-dexcom" ? "Syncing…" : "Sync"}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                    disabled={busy !== null}
+                    onClick={() => void disconnect("dexcom")}
+                  >
+                    {busy === "disconnect-dexcom" ? "Disconnecting…" : "Disconnect"}
+                  </button>
+                </>
               ) : (
                 <>
                   <a
@@ -280,7 +368,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
         {/* Steps */}
         <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="font-medium text-zinc-900">Apple Steps (Shortcuts)</p>
               <p className="mt-1 text-xs text-zinc-500">
                 {initial.steps.connected ? (
@@ -289,6 +377,24 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                   <>Not connected — use Connect to enable your ingest URL.</>
                 )}
               </p>
+              {!initial.steps.ingestSecretConfigured ? (
+                <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-950">
+                  Add{" "}
+                  <code className="rounded bg-amber-100/80 px-1 py-0.5">STEPS_INGEST_SECRET</code>{" "}
+                  to your environment (see <code className="rounded bg-amber-100/80 px-1">.env.example</code>
+                  ), restart the server, then use the same value as the{" "}
+                  <code className="rounded bg-amber-100/80 px-1">X-Shortcut-Secret</code> header in Shortcuts.
+                  Without it, posts to the ingest URL return an error.
+                </p>
+              ) : null}
+              {initial.steps.ingestUrlIsLocalDev ? (
+                <p className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5 text-xs text-sky-950">
+                  Your app URL is localhost. Shortcuts on an iPhone cannot reach it. Deploy the app (or use a
+                  tunnel), set <code className="rounded bg-sky-100/80 px-1">AUTH_URL</code> to the public
+                  <code className="ml-1 rounded bg-sky-100/80 px-1">https://…</code> origin, restart, then use
+                  Connect again so the ingest URL is reachable from the device.
+                </p>
+              ) : null}
             </div>
             <div className="flex flex-wrap gap-2">
               {!initial.steps.connected ? (

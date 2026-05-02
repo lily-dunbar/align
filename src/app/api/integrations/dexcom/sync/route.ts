@@ -21,8 +21,21 @@ export async function POST(request: Request) {
     );
   }
 
+  let shareOptions: { lookbackDays?: number } | undefined;
   try {
-    const result = await syncDexcomGlucoseReadings(userId);
+    const ct = request.headers.get("content-type") ?? "";
+    if (ct.includes("application/json")) {
+      const body = (await request.json()) as { lookbackDays?: unknown };
+      if (body && typeof body.lookbackDays === "number" && Number.isFinite(body.lookbackDays)) {
+        shareOptions = { lookbackDays: body.lookbackDays };
+      }
+    }
+  } catch {
+    shareOptions = undefined;
+  }
+
+  try {
+    const result = await syncDexcomGlucoseReadings(userId, shareOptions);
     if (wantsJson) {
       return NextResponse.json({ ok: true, ...result });
     }

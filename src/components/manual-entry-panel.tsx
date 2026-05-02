@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 
 import { DAY_DATA_CHANGED_EVENT, OPEN_MANUAL_MODAL_EVENT } from "@/lib/day-view-events";
+import { useResolvedDayYmd } from "@/lib/use-resolved-day-ymd";
 
 type Workout = {
   id: string;
@@ -63,6 +64,7 @@ function notifyDayDataChanged() {
 }
 
 export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
+  const resolvedDateYmd = useResolvedDayYmd(dateYmd);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [foods, setFoods] = useState<FoodEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -88,6 +90,13 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
 
   const [editingWorkoutId, setEditingWorkoutId] = useState<string | null>(null);
   const [editingFoodId, setEditingFoodId] = useState<string | null>(null);
+
+  useEffect(() => {
+    startTransition(() => {
+      setWorkoutForm((s) => ({ ...s, date: resolvedDateYmd }));
+      setFoodForm((s) => ({ ...s, date: resolvedDateYmd }));
+    });
+  }, [resolvedDateYmd]);
 
   async function loadAll() {
     setLoading(true);
@@ -144,24 +153,24 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
   useEffect(() => {
     function handleOpen() {
       setTab("activity");
-      setWorkoutForm((s) => ({ ...s, date: dateYmd }));
-      setFoodForm((s) => ({ ...s, date: dateYmd }));
+      setWorkoutForm((s) => ({ ...s, date: resolvedDateYmd }));
+      setFoodForm((s) => ({ ...s, date: resolvedDateYmd }));
       setIsOpen(true);
     }
     window.addEventListener(OPEN_MANUAL_MODAL_EVENT, handleOpen);
     return () => {
       window.removeEventListener(OPEN_MANUAL_MODAL_EVENT, handleOpen);
     };
-  }, [dateYmd]);
+  }, [resolvedDateYmd]);
 
   const workoutsForDate = useMemo(
-    () => workouts.filter((w) => isSameLocalDay(w.startedAt, dateYmd)),
-    [workouts, dateYmd],
+    () => workouts.filter((w) => isSameLocalDay(w.startedAt, resolvedDateYmd)),
+    [workouts, resolvedDateYmd],
   );
 
   const foodForDate = useMemo(
-    () => foods.filter((f) => isSameLocalDay(f.eatenAt, dateYmd)),
-    [foods, dateYmd],
+    () => foods.filter((f) => isSameLocalDay(f.eatenAt, resolvedDateYmd)),
+    [foods, resolvedDateYmd],
   );
 
   async function createWorkout() {
@@ -189,7 +198,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
     }
     setWorkoutForm({
       workoutType: "Walk",
-      date: dateYmd,
+      date: resolvedDateYmd,
       startTime: "12:00",
       endTime: "",
       distanceMeters: "",
@@ -216,7 +225,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
       return;
     }
     setFoodForm({
-      date: dateYmd,
+      date: resolvedDateYmd,
       time: "12:00",
       carbsGrams: "",
     });
@@ -287,7 +296,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
           <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Add activity</h2>
           <p className="mt-1 text-sm text-zinc-600">
             Log workouts, walks, and meals for{" "}
-            <span className="font-medium text-zinc-800">{dateYmd}</span>.
+            <span className="font-medium text-zinc-800">{resolvedDateYmd}</span>.
           </p>
         </div>
         <button
@@ -296,8 +305,8 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
           disabled={loading}
           onClick={() => {
             setTab("activity");
-            setWorkoutForm((s) => ({ ...s, date: dateYmd }));
-            setFoodForm((s) => ({ ...s, date: dateYmd }));
+            setWorkoutForm((s) => ({ ...s, date: resolvedDateYmd }));
+            setFoodForm((s) => ({ ...s, date: resolvedDateYmd }));
             setIsOpen(true);
           }}
         >

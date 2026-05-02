@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { auth } from "@clerk/nextjs/server";
 
 import { DaySummaryCards } from "@/components/day-summary-cards";
@@ -28,16 +29,22 @@ export default async function Home({ searchParams }: HomeProps) {
 
   return (
     <main className="mx-auto flex min-h-[100dvh] w-full max-w-6xl flex-col gap-6 bg-zinc-50 px-4 py-8 md:px-8">
-      {userId ? <DateNav initialDateYmd={selectedDateYmd} /> : null}
       {userId ? (
-        <ManualEntryPanel
-          key={selectedDateYmd}
-          dateYmd={selectedDateYmd}
-          showCard={false}
-        />
+        <Suspense
+          fallback={
+            <div className="min-h-[22rem] w-full animate-pulse rounded-2xl bg-zinc-100" />
+          }
+        >
+          <DateNav initialDateYmd={selectedDateYmd} />
+          <ManualEntryPanel
+            key={selectedDateYmd}
+            dateYmd={selectedDateYmd}
+            showCard={false}
+          />
+          <DailyViewChart dateYmd={selectedDateYmd} />
+          <DaySummaryCards dateYmd={selectedDateYmd} />
+        </Suspense>
       ) : null}
-      {userId ? <DailyViewChart dateYmd={selectedDateYmd} /> : null}
-      {userId ? <DaySummaryCards dateYmd={selectedDateYmd} /> : null}
 
       <p className="mt-auto border-t border-zinc-200/90 pt-6 text-center text-sm text-zinc-500">
         Metabolic intelligence for daily diabetes decisions.

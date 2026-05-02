@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { DAY_DATA_CHANGED_EVENT } from "@/lib/day-view-events";
+import { useResolvedDayYmd } from "@/lib/use-resolved-day-ymd";
 import {
   Bar,
   CartesianGrid,
@@ -99,6 +100,7 @@ type Props = {
 };
 
 export function DailyViewChart({ dateYmd }: Props) {
+  const resolvedDateYmd = useResolvedDayYmd(dateYmd);
   const [payload, setPayload] = useState<DayApiResponse | null>(null);
   const [prefs, setPrefs] = useState<ChartDisplayPreferences | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -108,7 +110,7 @@ export function DailyViewChart({ dateYmd }: Props) {
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
       const resp = await fetch(
-        `/api/day?date=${encodeURIComponent(dateYmd)}&timeZone=${encodeURIComponent(tz)}`,
+        `/api/day?date=${encodeURIComponent(resolvedDateYmd)}&timeZone=${encodeURIComponent(tz)}`,
         {
           cache: "no-store",
         },
@@ -119,7 +121,7 @@ export function DailyViewChart({ dateYmd }: Props) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     }
-  }, [dateYmd]);
+  }, [resolvedDateYmd]);
 
   useEffect(() => {
     const id = requestAnimationFrame(() => {

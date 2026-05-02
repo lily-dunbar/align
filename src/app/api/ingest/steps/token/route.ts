@@ -30,8 +30,18 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const token = await getOrCreateStepIngestToken(userId);
-  return NextResponse.json(buildResponse(userId, token));
+  try {
+    const token = await getOrCreateStepIngestToken(userId);
+    return NextResponse.json(buildResponse(userId, token));
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error);
+    const hint =
+      raw.includes("step_ingest_tokens") || raw.includes("relation")
+        ? "Database may be out of date — run npm run db:migrate and try again."
+        : raw;
+    console.error("[ingest/steps/token] GET failed:", error);
+    return NextResponse.json({ error: hint }, { status: 500 });
+  }
 }
 
 export async function POST() {
@@ -39,6 +49,16 @@ export async function POST() {
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  const token = await regenerateStepIngestToken(userId);
-  return NextResponse.json(buildResponse(userId, token));
+  try {
+    const token = await regenerateStepIngestToken(userId);
+    return NextResponse.json(buildResponse(userId, token));
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error);
+    const hint =
+      raw.includes("step_ingest_tokens") || raw.includes("relation")
+        ? "Database may be out of date — run npm run db:migrate and try again."
+        : raw;
+    console.error("[ingest/steps/token] POST failed:", error);
+    return NextResponse.json({ error: hint }, { status: 500 });
+  }
 }

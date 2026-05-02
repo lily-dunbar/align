@@ -3,22 +3,27 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { OPEN_MANUAL_MODAL_EVENT } from "@/lib/day-view-events";
+import { useResolvedDayYmd } from "@/lib/use-resolved-day-ymd";
 
 type Props = {
   initialDateYmd: string;
 };
 
+/** Move by calendar days in the browser's local timezone (not UTC midnight). */
 function addDays(dateYmd: string, delta: number) {
-  const d = new Date(`${dateYmd}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + delta);
-  return d.toISOString().slice(0, 10);
+  const [y, m, d] = dateYmd.split("-").map(Number);
+  const base = new Date(y, m - 1, d + delta);
+  const yy = base.getFullYear();
+  const mm = String(base.getMonth() + 1).padStart(2, "0");
+  const dd = String(base.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
 }
 
 export function DateNav({ initialDateYmd }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const selectedDate = params.get("date") ?? initialDateYmd;
+  const selectedDate = useResolvedDayYmd(initialDateYmd);
 
   function setDate(nextDate: string) {
     const qp = new URLSearchParams(params.toString());

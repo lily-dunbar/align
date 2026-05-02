@@ -1,5 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { DisplayPreferencesCard } from "@/components/display-preferences-card";
@@ -19,10 +20,20 @@ import {
   stepIngestTokens,
   stravaTokens,
 } from "@/db/schema";
+import { DEXCOM_SHARE_UI_HIDDEN_COOKIE } from "@/lib/dexcom/share-ui-cookie";
 import { isPydexcomShareConfigured } from "@/lib/dexcom/share-sync";
 
 function appBaseUrl() {
   return (process.env.AUTH_URL ?? "http://localhost:4000").replace(/\/$/, "");
+}
+
+function isLocalAppOrigin(url: string) {
+  try {
+    const { hostname } = new URL(url);
+    return hostname === "localhost" || hostname === "127.0.0.1";
+  } catch {
+    return false;
+  }
 }
 
 function readParam(
@@ -50,6 +61,10 @@ export default async function SettingsPage({
   const stravaErr = readParam(params, "strava_error");
 
   const shareDexcom = isPydexcomShareConfigured();
+  const cookieStore = await cookies();
+  const shareUiDismissed =
+    shareDexcom &&
+    cookieStore.get(DEXCOM_SHARE_UI_HIDDEN_COOKIE)?.value === userId;
   const dexcomRow = await db.query.dexcomTokens.findFirst({
     where: eq(dexcomTokens.userId, userId),
     columns: { userId: true },
@@ -64,6 +79,8 @@ export default async function SettingsPage({
   });
 
   const base = appBaseUrl();
+  const stepsIngestSecretConfigured = Boolean(process.env.STEPS_INGEST_SECRET?.trim());
+  const stepsIngestUrlIsLocalDev = isLocalAppOrigin(base);
 
   const lastDexcomGlucoseRow =
     dexcomRow || shareDexcom
@@ -100,9 +117,10 @@ export default async function SettingsPage({
 
   const initial: IntegrationSnapshot = {
     dexcom: {
-      connected: !!dexcomRow || shareDexcom,
+      connected: !!dexcomRow || (shareDexcom && !shareUiDismissed),
       lastSyncAt: lastDexcomAt,
       shareCredentialsMode: shareDexcom,
+      shareUiDismissed,
     },
     strava: {
       connected: !!stravaRow,
@@ -112,6 +130,8 @@ export default async function SettingsPage({
       connected: !!stepTok,
       lastIngestAt: lastStepsAt,
       ingestUrl: stepTok ? `${base}/api/ingest/steps/${stepTok.token}` : null,
+      ingestSecretConfigured: stepsIngestSecretConfigured,
+      ingestUrlIsLocalDev: stepsIngestUrlIsLocalDev,
     },
   };
 

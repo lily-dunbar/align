@@ -6,6 +6,7 @@ import { getDexcomTokenUrl } from "@/lib/dexcom/oauth";
 import {
   isPydexcomShareConfigured,
   syncDexcomGlucoseReadingsFromShare,
+  type ShareSyncOptions,
 } from "@/lib/dexcom/share-sync";
 
 type DexcomTokenResponse = {
@@ -183,9 +184,12 @@ export async function getValidDexcomAccessToken(userId: string) {
   return refreshed.accessToken;
 }
 
-export async function syncDexcomGlucoseReadings(userId: string) {
+export async function syncDexcomGlucoseReadings(
+  userId: string,
+  shareOptions?: ShareSyncOptions,
+) {
   if (isPydexcomShareConfigured()) {
-    return syncDexcomGlucoseReadingsFromShare(userId);
+    return syncDexcomGlucoseReadingsFromShare(userId, shareOptions);
   }
 
   const newest = await db.query.glucoseReadings.findFirst({

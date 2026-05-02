@@ -39,7 +39,7 @@ export function StepIngestUrlCard({ initialIngestUrl, tokenEndpoint }: Props) {
     setIsRotating(true);
     setError(null);
     try {
-      const resp = await fetch(tokenEndpoint, { method: "POST" });
+      const resp = await fetch(tokenEndpoint, { method: "POST", credentials: "include" });
       const json = (await resp.json()) as { ingestUrl?: string; error?: string };
       if (!resp.ok || !json.ingestUrl) {
         setError(json.error ?? "Failed to rotate token");

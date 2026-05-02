@@ -3,6 +3,10 @@ import { and, desc, eq, gte } from "drizzle-orm";
 import { db } from "@/db";
 import { dexcomTokens, glucoseReadings } from "@/db/schema";
 import { getDexcomTokenUrl } from "@/lib/dexcom/oauth";
+import {
+  isPydexcomShareConfigured,
+  syncDexcomGlucoseReadingsFromShare,
+} from "@/lib/dexcom/share-sync";
 
 type DexcomTokenResponse = {
   access_token: string;
@@ -27,7 +31,7 @@ function getDexcomApiBase() {
   return (
     process.env.DEXCOM_API_BASE_URL ??
     process.env.DEXCOM_DATA_BASE_URL ??
-    "https://sandbox-api.dexcom.com"
+    "https://api.dexcom.com"
   );
 }
 
@@ -180,6 +184,10 @@ export async function getValidDexcomAccessToken(userId: string) {
 }
 
 export async function syncDexcomGlucoseReadings(userId: string) {
+  if (isPydexcomShareConfigured()) {
+    return syncDexcomGlucoseReadingsFromShare(userId);
+  }
+
   const newest = await db.query.glucoseReadings.findFirst({
     where: eq(glucoseReadings.userId, userId),
     orderBy: [desc(glucoseReadings.observedAt)],

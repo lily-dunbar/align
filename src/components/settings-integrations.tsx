@@ -6,7 +6,11 @@ import { useState } from "react";
 import { StepIngestUrlCard } from "@/components/step-ingest-url-card";
 
 export type IntegrationSnapshot = {
-  dexcom: { connected: boolean; lastSyncAt: string | null };
+  dexcom: {
+    connected: boolean;
+    lastSyncAt: string | null;
+    shareCredentialsMode?: boolean;
+  };
   strava: { connected: boolean; lastSyncAt: string | null };
   steps: {
     connected: boolean;
@@ -32,6 +36,12 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
   const [notice, setNotice] = useState<string | null>(null);
 
   async function disconnect(kind: "dexcom" | "strava" | "steps") {
+    if (kind === "dexcom" && initial.dexcom.shareCredentialsMode) {
+      setNotice(
+        "Dexcom Share is configured with PYDEXCOM_* in server env. Remove those variables to disconnect; OAuth Connect is not used in this mode.",
+      );
+      return;
+    }
     if (!window.confirm(`Disconnect ${kind === "steps" ? "Apple Steps ingest" : kind}?`)) {
       return;
     }
@@ -154,9 +164,18 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
               <p className="font-medium text-zinc-900">Dexcom</p>
               <p className="mt-1 text-xs text-zinc-500">
                 {initial.dexcom.connected ? (
-                  <>Connected · Last data sync: {formatWhen(initial.dexcom.lastSyncAt)}</>
+                  initial.dexcom.shareCredentialsMode ? (
+                    <>
+                      Connected via Dexcom Share (PYDEXCOM_* env). Last sync:{" "}
+                      {formatWhen(initial.dexcom.lastSyncAt)}
+                    </>
+                  ) : (
+                    <>
+                      Connected · Last data sync: {formatWhen(initial.dexcom.lastSyncAt)}
+                    </>
+                  )
                 ) : (
-                  <>Not connected</>
+                  <>Not connected — use Connect to sign in with Dexcom.</>
                 )}
               </p>
             </div>
@@ -168,8 +187,23 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 >
                   Connect
                 </a>
+              ) : initial.dexcom.shareCredentialsMode ? (
+                <button
+                  type="button"
+                  className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
+                  disabled={busy !== null}
+                  onClick={() => void syncDexcom()}
+                >
+                  {busy === "sync-dexcom" ? "Syncing…" : "Sync"}
+                </button>
               ) : (
                 <>
+                  <a
+                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50"
+                    href={`/api/integrations/dexcom/connect?return_to=${SETTINGS_RETURN}`}
+                  >
+                    Reconnect
+                  </a>
                   <button
                     type="button"
                     className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
@@ -201,7 +235,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 {initial.strava.connected ? (
                   <>Connected · Last activity sync: {formatWhen(initial.strava.lastSyncAt)}</>
                 ) : (
-                  <>Not connected</>
+                  <>Not connected — use Connect to sign in with Strava.</>
                 )}
               </p>
             </div>
@@ -215,6 +249,12 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 </a>
               ) : (
                 <>
+                  <a
+                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50"
+                    href={`/api/integrations/strava/connect?return_to=${SETTINGS_RETURN}`}
+                  >
+                    Reconnect
+                  </a>
                   <button
                     type="button"
                     className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
@@ -246,7 +286,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 {initial.steps.connected ? (
                   <>Connected · Last ingest: {formatWhen(initial.steps.lastIngestAt)}</>
                 ) : (
-                  <>Not connected</>
+                  <>Not connected — use Connect to enable your ingest URL.</>
                 )}
               </p>
             </div>

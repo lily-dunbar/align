@@ -34,9 +34,11 @@ Set these in `.env.local`:
 
 For Vercel production, set the same Clerk keys and `AUTH_URL=https://<your-domain>`.
 
-### Dexcom OAuth (next step)
+### Dexcom OAuth
 
-Configure `DEXCOM_CLIENT_ID` and `DEXCOM_CLIENT_SECRET`, then open:
+Register an app in [Dexcom Developer](https://developer.dexcom.com) and add `DEXCOM_CLIENT_ID` and `DEXCOM_CLIENT_SECRET` to `.env.local`. Production endpoints default to `api.dexcom.com` (authorize, token, and EGV data). For sandbox testing, set the `DEXCOM_*_URL` and `DEXCOM_API_BASE_URL` overrides to `sandbox-api.dexcom.com` and use a **sandbox** OAuth client.
+
+Open:
 
 - `http://localhost:4000/api/integrations/dexcom/connect`
 

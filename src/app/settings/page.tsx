@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { DisplayPreferencesCard } from "@/components/display-preferences-card";
 import { SettingsPatternCard } from "@/components/settings-pattern-card";
 import { SettingsTargetsCard } from "@/components/settings-targets-card";
+import { SettingsDebugSection } from "@/components/settings-debug-section";
 import {
   SettingsIntegrations,
   type IntegrationSnapshot,
@@ -18,6 +19,7 @@ import {
   stepIngestTokens,
   stravaTokens,
 } from "@/db/schema";
+import { isPydexcomShareConfigured } from "@/lib/dexcom/share-sync";
 
 function appBaseUrl() {
   return (process.env.AUTH_URL ?? "http://localhost:4000").replace(/\/$/, "");
@@ -47,6 +49,7 @@ export default async function SettingsPage({
   const dexcomErr = readParam(params, "dexcom_error");
   const stravaErr = readParam(params, "strava_error");
 
+  const shareDexcom = isPydexcomShareConfigured();
   const dexcomRow = await db.query.dexcomTokens.findFirst({
     where: eq(dexcomTokens.userId, userId),
     columns: { userId: true },
@@ -62,9 +65,9 @@ export default async function SettingsPage({
 
   const base = appBaseUrl();
 
-  const lastDexcomAt = dexcomRow
-    ? (
-        await db.query.glucoseReadings.findFirst({
+  const lastDexcomGlucoseRow =
+    dexcomRow || shareDexcom
+      ? await db.query.glucoseReadings.findFirst({
           where: and(
             eq(glucoseReadings.userId, userId),
             eq(glucoseReadings.source, "dexcom"),
@@ -72,8 +75,8 @@ export default async function SettingsPage({
           orderBy: [desc(glucoseReadings.updatedAt)],
           columns: { updatedAt: true },
         })
-      )?.updatedAt.toISOString() ?? null
-    : null;
+      : null;
+  const lastDexcomAt = lastDexcomGlucoseRow?.updatedAt.toISOString() ?? null;
 
   const lastStravaAt = stravaRow
     ? (
@@ -97,8 +100,9 @@ export default async function SettingsPage({
 
   const initial: IntegrationSnapshot = {
     dexcom: {
-      connected: !!dexcomRow,
+      connected: !!dexcomRow || shareDexcom,
       lastSyncAt: lastDexcomAt,
+      shareCredentialsMode: shareDexcom,
     },
     strava: {
       connected: !!stravaRow,
@@ -144,7 +148,12 @@ export default async function SettingsPage({
       <SettingsTargetsCard />
       <SettingsPatternCard />
       <DisplayPreferencesCard />
-      <SettingsIntegrations initial={initial} />
+      <SettingsIntegrations
+        key={`dex:${initial.dexcom.connected}-strava:${initial.strava.connected}-steps:${initial.steps.connected}`}
+        initial={initial}
+      />
+
+      <SettingsDebugSection />
     </main>
   );
 }

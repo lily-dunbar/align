@@ -29,7 +29,6 @@ export async function GET(request: Request) {
   authorizeUrl.searchParams.set("redirect_uri", getStravaRedirectUri());
   authorizeUrl.searchParams.set("response_type", "code");
   authorizeUrl.searchParams.set("scope", process.env.STRAVA_SCOPE ?? "activity:read_all");
-  authorizeUrl.searchParams.set("approval_prompt", "auto");
   authorizeUrl.searchParams.set("state", state);
 
   return NextResponse.redirect(authorizeUrl);

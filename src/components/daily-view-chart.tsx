@@ -7,6 +7,7 @@ import {
   Bar,
   CartesianGrid,
   ComposedChart,
+  LabelList,
   Line,
   ReferenceArea,
   ReferenceLine,
@@ -14,6 +15,7 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  type TooltipContentProps,
 } from "recharts";
 
 type DayApiResponse = {
@@ -42,15 +44,19 @@ type ChartDisplayPreferences = {
   showFood: boolean;
 };
 
+/** One row per clock hour (local); glucose = last reading in that hour; steps drawn in lower Y band. */
 type ChartRow = {
   xHour: number;
   glucose: number | null;
   steps: number;
-  /** Bottom padding so step bars render in the lower band (stack base). */
-  stepsPad: number;
-  /** Visible step bar height above `stepsPad`. */
-  stepsBar: number;
+  /** Y-axis span for the step bar: floor → top (Recharts bar interval). */
+  stepsRange: readonly [number, number];
 };
+
+/** Glucose uses ≥ this Y value; step bars fill the band below it on the same scale. */
+const GLUCOSE_FLOOR = 40;
+const STEP_Y_MIN = 5;
+const STEP_Y_MAX = GLUCOSE_FLOOR;
 
 function toLocalHourFraction(iso: string, timeZone: string) {
   const date = new Date(iso);
@@ -70,6 +76,22 @@ function hourLabel(v: number) {
   const suffix = hour >= 12 ? "PM" : "AM";
   const normalized = hour % 12 === 0 ? 12 : hour % 12;
   return `${normalized}${suffix}`;
+}
+
+function CombinedDayTooltip({ active, label, payload }: TooltipContentProps) {
+  const row = payload?.[0]?.payload as ChartRow | undefined;
+  if (!active || !row) return null;
+  return (
+    <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs shadow-sm">
+      <p className="font-medium text-zinc-800">Time: {hourLabel(Number(label))}</p>
+      {row.glucose != null ? (
+        <p className="text-zinc-700">Glucose: {row.glucose} mg/dL</p>
+      ) : (
+        <p className="text-zinc-500">No glucose in this hour</p>
+      )}
+      <p className="text-zinc-600">Steps: {row.steps}</p>
+    </div>
+  );
 }
 
 type Props = {
@@ -139,39 +161,40 @@ export function DailyViewChart({ dateYmd }: Props) {
     };
   }, []);
 
-  const chartData = useMemo<ChartRow[]>(() => {
-    if (!payload) return [];
+  const chartData = useMemo(() => {
+    if (!payload) {
+      return [] as ChartRow[];
+    }
     const tz = payload.day.timeZone;
 
-    const hourly = new Map<number, ChartRow>();
-    for (let h = 0; h < 24; h += 1) {
-      hourly.set(h, { xHour: h, glucose: null, steps: 0, stepsPad: 40, stepsBar: 0 });
-    }
-
+    const stepsByHour = new Array<number>(24).fill(0);
     for (const s of payload.streams.hourlySteps) {
-      const hour = Math.floor(toLocalHourFraction(s.bucketStart, tz));
-      const row = hourly.get(hour);
-      if (row) row.steps += s.stepCount;
+      const h = Math.floor(toLocalHourFraction(s.bucketStart, tz));
+      if (h >= 0 && h < 24) stepsByHour[h] += s.stepCount;
     }
 
-    for (const g of payload.streams.glucose) {
-      const xHour = toLocalHourFraction(g.observedAt, tz);
-      const existing = hourly.get(xHour);
-      hourly.set(xHour, {
-        xHour,
-        glucose: g.mgdl,
-        steps: existing?.steps ?? 0,
-        stepsPad: 40,
-        stepsBar: 0,
+    const glucoseLastByHour: (number | null)[] = new Array(24).fill(null);
+    const sortedGlucose = [...payload.streams.glucose].sort(
+      (a, b) =>
+        new Date(a.observedAt).getTime() - new Date(b.observedAt).getTime(),
+    );
+    for (const g of sortedGlucose) {
+      const h = Math.floor(toLocalHourFraction(g.observedAt, tz));
+      if (h >= 0 && h < 24) glucoseLastByHour[h] = g.mgdl;
+    }
+
+    const maxSteps = Math.max(1, ...stepsByHour);
+    const band = STEP_Y_MAX - STEP_Y_MIN;
+    const rows: ChartRow[] = [];
+    for (let h = 0; h < 24; h += 1) {
+      const steps = stepsByHour[h];
+      const stepsBarTop = STEP_Y_MIN + (steps / maxSteps) * band;
+      rows.push({
+        xHour: h,
+        glucose: glucoseLastByHour[h],
+        steps,
+        stepsRange: [STEP_Y_MIN, stepsBarTop],
       });
-    }
-
-    const rows = [...hourly.values()].sort((a, b) => a.xHour - b.xHour);
-    const maxSteps = Math.max(1, ...rows.map((r) => r.steps));
-    for (const row of rows) {
-      // Keep steps in a low visual band (stacked bar: pad + bar height).
-      row.stepsPad = 40;
-      row.stepsBar = (row.steps / maxSteps) * 35;
     }
     return rows;
   }, [payload]);
@@ -209,17 +232,28 @@ export function DailyViewChart({ dateYmd }: Props) {
         </span>
       </div>
       <p className="mt-1 text-xs text-zinc-500">Local timezone: {tz}</p>
-      <div className="mt-3 h-80 w-full min-w-0 rounded-xl bg-zinc-50 p-2">
-        <ResponsiveContainer width="100%" height="100%" minWidth={280} minHeight={260}>
-          <ComposedChart data={chartData} margin={{ top: 10, right: 12, bottom: 8, left: 0 }}>
+      <div className="mt-3 h-72 w-full min-w-0 rounded-xl bg-zinc-50 p-2">
+        <ResponsiveContainer width="100%" height="100%" minWidth={280} minHeight={220}>
+          <ComposedChart data={chartData} margin={{ top: 10, right: 12, bottom: 8, left: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e4e4e7" />
+            {showSteps ? (
+              <ReferenceArea
+                x1={0}
+                x2={24}
+                y1={STEP_Y_MIN}
+                y2={GLUCOSE_FLOOR}
+                fill="#f4f4f5"
+                fillOpacity={0.85}
+                ifOverflow="extendDomain"
+              />
+            ) : null}
             {showSleep
               ? payload.streams.sleepWindows.map((s) => (
                   <ReferenceArea
                     key={`sleep-${s.id}`}
                     x1={toLocalHourFraction(s.sleepStart, tz)}
                     x2={toLocalHourFraction(s.sleepEnd, tz)}
-                    y1={40}
+                    y1={GLUCOSE_FLOOR}
                     y2={300}
                     fill="#a78bfa"
                     fillOpacity={0.12}
@@ -233,7 +267,7 @@ export function DailyViewChart({ dateYmd }: Props) {
                     key={`workout-${w.id}`}
                     x1={toLocalHourFraction(w.startedAt, tz)}
                     x2={toLocalHourFraction(w.endedAt ?? w.startedAt, tz)}
-                    y1={40}
+                    y1={GLUCOSE_FLOOR}
                     y2={300}
                     fill="#fca5a5"
                     fillOpacity={0.2}
@@ -268,40 +302,35 @@ export function DailyViewChart({ dateYmd }: Props) {
               tickCount={13}
               tickFormatter={hourLabel}
             />
-            <YAxis type="number" domain={[40, 300]} tick={{ fontSize: 11 }} />
-
-            <Tooltip
-              contentStyle={{ borderRadius: 10, borderColor: "#e4e4e7" }}
-              labelFormatter={(v) => `Time: ${hourLabel(Number(v))}`}
-              formatter={(value, name, item) => {
-                if (name === "stepsBar" || name === "stepsPad") {
-                  const steps = (item?.payload as ChartRow | undefined)?.steps ?? 0;
-                  return [steps, "Steps"];
-                }
-                return [value as number, "Glucose mg/dL"];
-              }}
+            <YAxis
+              type="number"
+              domain={[STEP_Y_MIN, 300]}
+              tick={{ fontSize: 11 }}
+              tickFormatter={(v) => (v < GLUCOSE_FLOOR ? "" : String(v))}
+              allowDecimals={false}
             />
 
+            <Tooltip content={CombinedDayTooltip} />
+
             {showSteps ? (
-              <>
-                <Bar
-                  dataKey="stepsPad"
-                  stackId="steps"
-                  yAxisId={0}
-                  fill="#fafafa"
-                  barSize={10}
-                  isAnimationActive={false}
+              <Bar
+                dataKey="stepsRange"
+                fill="#d4d4d8"
+                radius={[3, 3, 0, 0]}
+                maxBarSize={26}
+                isAnimationActive={false}
+              >
+                <LabelList
+                  dataKey="steps"
+                  position="top"
+                  fill="#71717a"
+                  fontSize={10}
+                  formatter={(v) => {
+                    const n = typeof v === "number" ? v : Number(v);
+                    return Number.isFinite(n) && n > 0 ? String(n) : "";
+                  }}
                 />
-                <Bar
-                  dataKey="stepsBar"
-                  stackId="steps"
-                  yAxisId={0}
-                  fill="#d4d4d8"
-                  radius={[2, 2, 0, 0]}
-                  barSize={10}
-                  isAnimationActive={false}
-                />
-              </>
+              </Bar>
             ) : null}
             <Line
               type="monotone"

@@ -27,6 +27,10 @@ const alignSerif = Lora({
 export const metadata: Metadata = {
   title: "Align",
   description: "Metabolic intelligence app",
+  icons: {
+    icon: "/brand/align-icon.png",
+    apple: "/brand/align-icon.png",
+  },
 };
 
 export default async function RootLayout({

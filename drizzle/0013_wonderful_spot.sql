@@ -1,0 +1,1 @@
+ALTER TABLE "user_display_preferences" ALTER COLUMN "onboarding_completed" SET DEFAULT false;

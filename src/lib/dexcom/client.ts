@@ -27,6 +27,13 @@ type DexcomEgvInput = {
 const REFRESH_SKEW_MS = 60_000;
 const DEXCOM_MAX_RANGE_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** OAuth: rolling sync window when user already has readings and `lookbackDays` is omitted. */
+const DEXCOM_OAUTH_DEFAULT_LOOKBACK_DAYS = 30;
+const DEXCOM_OAUTH_FIRST_SYNC_LOOKBACK_DAYS = 90;
+
+function clampDexcomLookbackDays(d: number): number {
+  return Math.min(90, Math.max(1, Math.floor(d)));
+}
 
 function getDexcomApiBase() {
   return (
@@ -199,12 +206,16 @@ export async function syncDexcomGlucoseReadings(
   });
 
   const now = new Date();
-  const defaultLookbackDays = 1;
-  const firstSyncLookbackDays = 90;
+  let lookbackDays: number;
+  if (shareOptions?.lookbackDays != null && Number.isFinite(shareOptions.lookbackDays)) {
+    lookbackDays = clampDexcomLookbackDays(shareOptions.lookbackDays);
+  } else if (!newest?.observedAt) {
+    lookbackDays = DEXCOM_OAUTH_FIRST_SYNC_LOOKBACK_DAYS;
+  } else {
+    lookbackDays = DEXCOM_OAUTH_DEFAULT_LOOKBACK_DAYS;
+  }
 
-  const start = newest?.observedAt
-    ? new Date(newest.observedAt.getTime() - defaultLookbackDays * 24 * 60 * 60 * 1000)
-    : new Date(now.getTime() - firstSyncLookbackDays * 24 * 60 * 60 * 1000);
+  const start = new Date(now.getTime() - lookbackDays * DAY_MS);
 
   const accessToken = await getValidDexcomAccessToken(userId);
 

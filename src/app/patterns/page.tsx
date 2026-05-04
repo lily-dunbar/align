@@ -1,14 +1,20 @@
 import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { PatternSummariesSection } from "@/app/patterns/pattern-summaries-section";
+import { PatternsInclusionLine } from "@/app/patterns/patterns-inclusion-line";
+import { PatternsTakeawaysSection } from "@/app/patterns/patterns-takeaways-section";
 import { PatternRangeFilters } from "@/components/pattern-range-filters";
-import { PatternsInsightsPanel } from "@/components/patterns-insights-panel";
 import { PatternsTimezoneSync } from "@/components/patterns-timezone-sync";
-import { PatternWindowSummaryCards } from "@/components/pattern-window-summary-cards";
-import { getPatternsFeatureJson } from "@/lib/patterns/feature-json";
-import { getPatternWindowSummaries } from "@/lib/patterns/window-summaries";
+import {
+  PatternInclusionLineSkeleton,
+  PatternWindowSummaryCardsSkeleton,
+  PatternsTakeawaysSectionSkeleton,
+} from "@/components/skeleton";
 import { safeTimeZoneForPatterns } from "@/lib/patterns/safe-timezone";
 import { parsePatternWindow } from "@/lib/patterns/window";
+import { needsOnboarding } from "@/lib/onboarding";
 
 function readParam(
   params: Record<string, string | string[] | undefined>,
@@ -24,6 +30,9 @@ export default async function PatternsPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { userId } = await auth();
+  if (userId && (await needsOnboarding(userId))) {
+    redirect("/onboarding");
+  }
   const params = (await searchParams) ?? {};
   const windowParam = readParam(params, "window");
   const window = parsePatternWindow(windowParam ?? undefined);
@@ -31,25 +40,12 @@ export default async function PatternsPage({
   const needsTzSync = rawTz == null || rawTz === "";
   const timeZone = safeTimeZoneForPatterns(rawTz ?? undefined);
 
-  const at = new Date();
-  const featureAndSummaries =
-    userId && !needsTzSync
-      ? await Promise.all([
-          getPatternsFeatureJson(userId, window, timeZone, at),
-          getPatternWindowSummaries(userId, window, at),
-        ])
-      : null;
-  const feature = featureAndSummaries?.[0] ?? null;
-  const windowSummaries = featureAndSummaries?.[1] ?? null;
+  const atIso = new Date().toISOString();
 
   return (
-    <main className="mx-auto flex min-h-[100dvh] w-full max-w-6xl flex-col gap-6 bg-zinc-50 px-4 py-8 md:px-8">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Patterns</h1>
-        <p className="text-sm text-zinc-600">
-          BG vs time (including weekdays vs weekends), vs step count, vs logged workouts — for the
-          window you select.
-        </p>
+    <main className="mx-auto flex min-h-[100dvh] w-full max-w-6xl flex-col gap-8 bg-background px-4 py-8 md:px-8 md:py-10">
+      <header>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">Insights</h1>
       </header>
 
       {userId && needsTzSync ? (
@@ -59,34 +55,46 @@ export default async function PatternsPage({
       ) : null}
 
       {!userId ? (
-        <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <div className="rounded-2xl border border-align-border/90 bg-white/90 p-6 ring-1 ring-black/[0.03]">
           <p className="text-sm text-zinc-700">
-            Sign in to load pattern summaries from your Dexcom, steps, sleep, and meals.
+            Sign in to load pattern summaries from your Dexcom, movement, sleep, and meals.
           </p>
         </div>
       ) : null}
 
       {userId && needsTzSync ? (
-        <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+        <div className="rounded-2xl border border-align-border/90 bg-white/90 p-6 ring-1 ring-black/[0.03]">
           <p className="text-sm text-zinc-600">Applying your local time zone…</p>
         </div>
       ) : null}
 
       {userId && !needsTzSync ? (
-        <div className="flex w-full flex-col gap-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Range</p>
-          <PatternRangeFilters active={window} timeZone={timeZone} />
-        </div>
-      ) : null}
+        <>
+          <div className="space-y-3">
+            <PatternRangeFilters active={window} timeZone={timeZone} />
+            <Suspense fallback={<PatternInclusionLineSkeleton />}>
+              <PatternsInclusionLine
+                userId={userId}
+                window={window}
+                timeZone={timeZone}
+                atIso={atIso}
+              />
+            </Suspense>
+          </div>
 
-      {userId && windowSummaries ? (
-        <PatternWindowSummaryCards data={windowSummaries} />
-      ) : null}
+          <Suspense fallback={<PatternWindowSummaryCardsSkeleton />}>
+            <PatternSummariesSection userId={userId} window={window} atIso={atIso} />
+          </Suspense>
 
-      {userId && feature ? (
-        <div className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
-          <PatternsInsightsPanel data={feature} />
-        </div>
+          <Suspense fallback={<PatternsTakeawaysSectionSkeleton />}>
+            <PatternsTakeawaysSection
+              userId={userId}
+              window={window}
+              timeZone={timeZone}
+              atIso={atIso}
+            />
+          </Suspense>
+        </>
       ) : null}
     </main>
   );

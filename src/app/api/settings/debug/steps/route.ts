@@ -55,6 +55,11 @@ export async function GET() {
   return NextResponse.json({
     ingest: {
       configured: !!tokenRow,
+      sharedSecretConfigured: !!(
+        process.env.STEPS_INGEST_SECRET?.trim() ||
+        process.env.STEPS_TOKEN_SECRET?.trim() ||
+        process.env.AUTH_SECRET?.trim()
+      ),
       tokenCreatedAt: tokenRow?.createdAt.toISOString() ?? null,
       tokenUpdatedAt: tokenRow?.updatedAt.toISOString() ?? null,
       /** Path-only hint so the token is not leaked in JSON. */

@@ -2,17 +2,23 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { AlignMetricCard } from "@/components/align-metric-card";
+import { DaySummaryCardsSkeleton } from "@/components/skeleton";
 import { DAY_DATA_CHANGED_EVENT } from "@/lib/day-view-events";
 import { useResolvedDayYmd } from "@/lib/use-resolved-day-ymd";
 
 type DaySummaryResponse = {
   targets?: {
+    lowMgdl: number;
+    highMgdl: number;
     tirGoalPercent: number;
     stepsGoalPerDay: number;
   };
   aggregates: {
     tir: {
       inRangePercent: number;
+      targetLowMgdl?: number;
+      targetHighMgdl?: number;
     };
     avgGlucoseMgdl: number | null;
     totalSteps: number;
@@ -22,24 +28,6 @@ type DaySummaryResponse = {
 type Props = {
   dateYmd: string;
 };
-
-function Card({
-  title,
-  value,
-  subtitle,
-}: {
-  title: string;
-  value: string;
-  subtitle?: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-4 text-left shadow-sm">
-      <p className="text-xs uppercase tracking-wide text-zinc-500">{title}</p>
-      <p className="mt-2 text-3xl font-semibold tracking-tight text-zinc-900">{value}</p>
-      {subtitle ? <p className="mt-1 text-xs text-zinc-500">{subtitle}</p> : null}
-    </div>
-  );
-}
 
 export function DaySummaryCards({ dateYmd }: Props) {
   const resolvedDateYmd = useResolvedDayYmd(dateYmd);
@@ -88,21 +76,23 @@ export function DaySummaryCards({ dateYmd }: Props) {
   }
 
   if (!data) {
-    return (
-      <section className="w-full rounded-lg border p-3 text-left text-sm text-zinc-600">
-        Loading summary…
-      </section>
-    );
+    return <DaySummaryCardsSkeleton />;
   }
 
   const tirActual = data.aggregates.tir.inRangePercent;
   const tirGoal = data.targets?.tirGoalPercent;
+  const lowMgdl =
+    data.targets?.lowMgdl ?? data.aggregates.tir.targetLowMgdl ?? null;
+  const highMgdl =
+    data.targets?.highMgdl ?? data.aggregates.tir.targetHighMgdl ?? null;
   const tirSubtitle =
-    tirGoal != null
-      ? tirActual >= tirGoal
-        ? `At or above goal (${tirGoal}%)`
-        : `Below goal (${tirGoal}%)`
-      : undefined;
+    lowMgdl != null && highMgdl != null
+      ? `Between ${lowMgdl} and ${highMgdl} mg/dL`
+      : tirGoal != null
+        ? tirActual >= tirGoal
+          ? `At or above goal (${tirGoal}%)`
+          : `Below goal (${tirGoal}%)`
+        : undefined;
 
   const steps = data.aggregates.totalSteps;
   const stepGoal = data.targets?.stepsGoalPerDay;
@@ -113,17 +103,19 @@ export function DaySummaryCards({ dateYmd }: Props) {
 
   return (
     <section className="w-full">
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Card
+      <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">Day summary</h2>
+      <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
+        <AlignMetricCard
+          variant="glucose"
           title="Avg glucose"
           value={
-            data.aggregates.avgGlucoseMgdl === null
-              ? "—"
-              : `${data.aggregates.avgGlucoseMgdl} mg/dL`
+            data.aggregates.avgGlucoseMgdl === null ? "—" : `${data.aggregates.avgGlucoseMgdl}`
           }
+          valueUnit={data.aggregates.avgGlucoseMgdl === null ? undefined : "mg/dL"}
         />
-        <Card title="TIR" value={`${tirActual.toFixed(1)}%`} subtitle={tirSubtitle} />
-        <Card
+        <AlignMetricCard variant="tir" title="TIR" value={`${tirActual.toFixed(1)}%`} subtitle={tirSubtitle} />
+        <AlignMetricCard
+          variant="steps"
           title="Total steps"
           value={steps.toLocaleString()}
           subtitle={stepsSubtitle}

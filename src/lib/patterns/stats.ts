@@ -31,10 +31,25 @@ const MIN_DAYS_FOR_STEP_SPLIT = 4;
 const WORKOUT_PROXIMITY_MS = 2 * 60 * 60 * 1000;
 const BEFORE_WINDOW_MS = 90 * 60 * 1000;
 const MINPTS_BEFORE_AFTER = 2;
+/** Daily totals ≥ this vs &lt; this for “more active day” glucose contrast. */
+const ACTIVE_DAY_STEPS_THRESHOLD = 7000;
+const MIN_DAYS_PER_ACTIVITY_STEP_BUCKET = 3;
+/** Run-like sessions with distance ≥ this (meters ≈ 2 mi) for long-run Δ stats. */
+const LONG_RUN_METERS_THRESHOLD = 2 * 1609.34;
 
 function mean(numbers: number[]): number | null {
   if (!numbers.length) return null;
   return numbers.reduce((a, b) => a + b, 0) / numbers.length;
+}
+
+function percentileFromSorted(sorted: number[], p: number): number | null {
+  if (!sorted.length) return null;
+  if (sorted.length === 1) return sorted[0]!;
+  const idx = (sorted.length - 1) * p;
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return sorted[lo]!;
+  return sorted[lo]! * (hi - idx) + sorted[hi]! * (idx - lo);
 }
 
 function bandMeanMgdl(
@@ -195,6 +210,23 @@ export async function loadPatternFeatureContext(
     }
   }
 
+  const morningMeanMgdl = bandMeanMgdl(
+    glucosePoints,
+    timeZone,
+    (h) => h >= 6 && h <= 11,
+    6,
+  );
+  const dinnerEveningMeanMgdl = bandMeanMgdl(
+    glucosePoints,
+    timeZone,
+    (h) => h >= 18 && h <= 21,
+    4,
+  );
+  const dinnerEveningVsMorningDeltaMgdl =
+    morningMeanMgdl != null && dinnerEveningMeanMgdl != null
+      ? dinnerEveningMeanMgdl - morningMeanMgdl
+      : null;
+
   const temporal: TemporalStats = {
     readingsUsed: glucosePoints.length,
     hourMeanMgdl,
@@ -203,12 +235,7 @@ export async function loadPatternFeatureContext(
     troughHour,
     peakMeanMgdl,
     troughMeanMgdl,
-    morningMeanMgdl: bandMeanMgdl(
-      glucosePoints,
-      timeZone,
-      (h) => h >= 6 && h <= 11,
-      6,
-    ),
+    morningMeanMgdl,
     afternoonMeanMgdl: bandMeanMgdl(
       glucosePoints,
       timeZone,
@@ -232,6 +259,8 @@ export async function loadPatternFeatureContext(
     weekdaySampleCount: weekdayMgdl.length,
     weekendSampleCount: weekendMgdl.length,
     eveningHigh630to21DaysCount: eveningHighDays.size,
+    dinnerEveningMeanMgdl,
+    dinnerEveningVsMorningDeltaMgdl,
   };
 
   const stepsByDay = new Map<string, number>();
@@ -280,6 +309,21 @@ export async function loadPatternFeatureContext(
     meanDailyMgdlHighStepDays = mean(highMeans);
   }
 
+  const daysStepsGte = dayRows.filter((d) => d.steps >= ACTIVE_DAY_STEPS_THRESHOLD);
+  const daysStepsLt = dayRows.filter((d) => d.steps < ACTIVE_DAY_STEPS_THRESHOLD);
+  const meanDailyMgdlStepsGteThreshold =
+    daysStepsGte.length >= MIN_DAYS_PER_ACTIVITY_STEP_BUCKET
+      ? mean(daysStepsGte.map((d) => d.meanMgdl))
+      : null;
+  const meanDailyMgdlStepsLtThreshold =
+    daysStepsLt.length >= MIN_DAYS_PER_ACTIVITY_STEP_BUCKET
+      ? mean(daysStepsLt.map((d) => d.meanMgdl))
+      : null;
+  const meanMgdlDeltaLessActiveMinusActive =
+    meanDailyMgdlStepsGteThreshold != null && meanDailyMgdlStepsLtThreshold != null
+      ? meanDailyMgdlStepsLtThreshold - meanDailyMgdlStepsGteThreshold
+      : null;
+
   const dailyTotals = [...stepsByDay.values()];
   const avgDailySteps = dailyTotals.length
     ? Math.round(mean(dailyTotals)!)
@@ -319,6 +363,7 @@ export async function loadPatternFeatureContext(
     distanceMeters: number | null;
     durationMin: number | null;
     label: string;
+    startYmd: string;
   };
   const deltaRows: DeltaRow[] = [];
 
@@ -348,6 +393,7 @@ export async function loadPatternFeatureContext(
       distanceMeters: a.distanceMeters,
       durationMin: moving != null ? moving / 60 : null,
       label: a.sportType ?? a.activityType ?? "Workout",
+      startYmd: formatYmdInZone(d0, timeZone),
     });
   }
 
@@ -377,6 +423,7 @@ export async function loadPatternFeatureContext(
       distanceMeters: m.distanceMeters,
       durationMin: m.durationMin,
       label: m.workoutType,
+      startYmd: formatYmdInZone(d0, timeZone),
     });
   }
 
@@ -405,6 +452,20 @@ export async function loadPatternFeatureContext(
       runish >= deltaRows.length / 2 ? "Run" : deltaRows[0]!.label;
   }
 
+  const deltaRowsLongRun = deltaRows.filter(
+    (r) => r.distanceMeters != null && r.distanceMeters >= LONG_RUN_METERS_THRESHOLD,
+  );
+  const deltasLongSorted =
+    deltaRowsLongRun.length > 0
+      ? [...deltaRowsLongRun.map((r) => r.delta)].sort((a, b) => a - b)
+      : [];
+  const avgMgdlDeltaRunLikeOverLongRunMi =
+    deltaRowsLongRun.length > 0 ? mean(deltaRowsLongRun.map((r) => r.delta)) : null;
+  const deltaMgdlP25LongRunMi =
+    deltasLongSorted.length > 0 ? percentileFromSorted(deltasLongSorted, 0.25) : null;
+  const deltaMgdlP75LongRunMi =
+    deltasLongSorted.length > 0 ? percentileFromSorted(deltasLongSorted, 0.75) : null;
+
   const steps: StepsStats = {
     daysWithStepsAndGlucose: dayRows.length,
     medianDailySteps,
@@ -417,6 +478,12 @@ export async function loadPatternFeatureContext(
     hasHourlyStepsData: stepRows.length > 0,
     stravaWorkoutCount: stravaList.length,
     manualWorkoutCount: manualList.length,
+    activeDayStepsThreshold: ACTIVE_DAY_STEPS_THRESHOLD,
+    daysMeanMgdlStepsGteThreshold: daysStepsGte.length,
+    daysMeanMgdlStepsLtThreshold: daysStepsLt.length,
+    meanDailyMgdlStepsGteThreshold,
+    meanDailyMgdlStepsLtThreshold,
+    meanMgdlDeltaLessActiveMinusActive,
   };
 
   const sessions: SessionStats = {
@@ -432,6 +499,11 @@ export async function loadPatternFeatureContext(
     avgDistanceMetersRunLike,
     avgDurationMinutesRunLike,
     dominantRunLikeLabel,
+    longRunMilesThreshold: 2,
+    runLikeSessionsDeltaOverLongRunMi: deltaRowsLongRun.length,
+    avgMgdlDeltaRunLikeOverLongRunMi,
+    deltaMgdlP25LongRunMi,
+    deltaMgdlP75LongRunMi,
   };
 
   const dataCoverage = {
@@ -440,7 +512,39 @@ export async function loadPatternFeatureContext(
     manualWorkoutsCount: manualList.length,
     stravaActivitiesCount: stravaList.length,
     analysisHint:
-      "Review ALL of: (1) temporal.* — CGM vs time-of-day and weekday/weekend; (2) steps.* — hourly/daily step totals vs glucose (high- vs low-step days); (3) sessions.* — manual + Strava workouts vs CGM (near workout vs away, before/during deltas). Derive insights by comparing these domains. Use Temporal / Steps / Sessions types accordingly.",
+      "Prefer 2–4 patterns with concrete mg/dL contrasts when stats support them. Use: temporal.dinnerEveningVsMorningDeltaMgdl (6–9pm vs morning), sessions.avgMgdlDeltaRunLikeOverLongRunMi / deltaMgdlP25LongRunMi–P75 for logged runs ≥ longRunMilesThreshold mi (during vs ~90min before start), steps.meanMgdlDeltaLessActiveMinusActive with activeDayStepsThreshold for day-level movement vs mean glucose. Types: Temporal, Sessions, or Steps (Steps = day-level activity threshold only, not hour-by-hour step curves). No diagnosis or dosing.",
+  };
+
+  const rangeStartYmd = formatYmdInZone(startUtc, timeZone);
+  const rangeEndYmd = formatYmdInZone(
+    new Date(endUtcExclusive.getTime() - 1),
+    timeZone,
+  );
+  const daysWithCgm = glucoseByDay.size;
+  const daysWithSteps = [...stepsByDay.values()].filter((n) => n > 0).length;
+  const activitiesCount = manualList.length + stravaList.length;
+
+  const inclusion = {
+    rangeStartYmd,
+    rangeEndYmd,
+    daysWithCgm,
+    daysWithSteps,
+    activitiesCount,
+  };
+
+  const evidence = {
+    dailyGlucoseSteps: dayRows.map((r) => ({
+      ymd: r.ymd,
+      meanMgdl: Math.round(r.meanMgdl * 10) / 10,
+      steps: r.steps,
+    })),
+    sessionDeltas: deltaRows.map((r) => ({
+      deltaMgdl: Math.round(r.delta * 10) / 10,
+      distanceMeters: r.distanceMeters,
+      label: r.label.slice(0, 48),
+      startYmd: r.startYmd,
+    })),
+    cgmDaysSample: [...glucoseByDay.keys()].sort(),
   };
 
   return {
@@ -456,5 +560,7 @@ export async function loadPatternFeatureContext(
     steps,
     sessions,
     dataCoverage,
+    inclusion,
+    evidence,
   };
 }

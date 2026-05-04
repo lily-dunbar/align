@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { SignInButton, useAuth, UserButton } from "@clerk/nextjs";
 
+import { AlignWordmark } from "@/components/align-wordmark";
+
 function UserMenuIcon() {
   return (
     <span
-      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 bg-zinc-50 text-zinc-500 transition hover:border-zinc-300 hover:bg-zinc-100"
+      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-align-border bg-align-subtle text-align-muted transition hover:border-align-border hover:bg-white"
       aria-hidden
     >
       <svg
@@ -26,17 +28,30 @@ function UserMenuIcon() {
   );
 }
 
-export function AppHeader() {
+type AppHeaderProps = {
+  /** Server-driven: set `DEMO_MODE=true` in env for class demos (see `npm run seed:demo`). */
+  demoMode?: boolean;
+};
+
+export function AppHeader({ demoMode = false }: AppHeaderProps) {
   const { isSignedIn, isLoaded } = useAuth();
 
   return (
-    <header className="sticky top-0 z-40 border-b border-zinc-200 bg-white/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-white/80">
+    <header className="sticky top-0 z-40 border-b border-align-border/80 bg-white/85 backdrop-saturate-150 backdrop-blur-md supports-[backdrop-filter]:bg-white/70">
+      {demoMode ? (
+        <div className="border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-center text-[11px] font-medium text-amber-950 md:px-8">
+          Demo mode — seeded CGM, steps, and workouts for your signed-in account. Run{" "}
+          <code className="rounded bg-amber-100/80 px-1 font-mono text-[10px]">npm run seed:demo</code>{" "}
+          with <code className="rounded bg-amber-100/80 px-1 font-mono text-[10px]">DEMO_USER_ID</code>.
+        </div>
+      ) : null}
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 md:px-8">
         <Link
           href="/"
-          className="text-lg font-semibold tracking-tight text-zinc-900 transition hover:text-zinc-700"
+          className="group flex items-center transition-opacity hover:opacity-[0.92] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-align-forest/25 focus-visible:ring-offset-2"
+          aria-label="Align home"
         >
-          Align
+          <AlignWordmark className="shrink-0" />
         </Link>
 
         <div className="flex shrink-0 items-center">
@@ -57,7 +72,7 @@ export function AppHeader() {
             <SignInButton mode="modal">
               <button
                 type="button"
-                className="rounded-full outline-none ring-zinc-400 focus-visible:ring-2 focus-visible:ring-offset-2"
+                className="rounded-full outline-none ring-offset-2 ring-offset-background focus-visible:ring-2 focus-visible:ring-align-forest/30"
                 aria-label="Sign in"
               >
                 <UserMenuIcon />

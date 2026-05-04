@@ -6,6 +6,7 @@ import {
   updateUserPreferences,
   type UserPreferences,
 } from "@/lib/user-display-preferences";
+import { isDeveloperSettingsEnabled } from "@/lib/developer-settings";
 
 export async function GET() {
   const { userId } = await auth();
@@ -23,6 +24,15 @@ export async function PATCH(request: Request) {
   const body = (await request.json()) as PatchBody;
   const patch: PatchBody = {};
 
+  const dev = isDeveloperSettingsEnabled();
+  if (body.developerDemoMode !== undefined && !dev) {
+    return NextResponse.json({ error: "Developer settings are disabled" }, { status: 403 });
+  }
+  /** Completing onboarding (`true`) is always allowed; clearing (`false`) is developer-only or via reset route. */
+  if (body.onboardingCompleted === false && !dev) {
+    return NextResponse.json({ error: "Developer settings are disabled" }, { status: 403 });
+  }
+
   if (typeof body.showSteps === "boolean") patch.showSteps = body.showSteps;
   if (typeof body.showActivity === "boolean") patch.showActivity = body.showActivity;
   if (typeof body.showSleep === "boolean") patch.showSleep = body.showSleep;
@@ -35,6 +45,10 @@ export async function PATCH(request: Request) {
   if (typeof body.targetTirPercent === "number") patch.targetTirPercent = body.targetTirPercent;
   if (typeof body.targetStepsPerDay === "number") {
     patch.targetStepsPerDay = body.targetStepsPerDay;
+  }
+  if (typeof body.developerDemoMode === "boolean") patch.developerDemoMode = body.developerDemoMode;
+  if (typeof body.onboardingCompleted === "boolean") {
+    patch.onboardingCompleted = body.onboardingCompleted;
   }
 
   if (Object.keys(patch).length === 0) {

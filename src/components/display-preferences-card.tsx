@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { ToggleSwitch } from "@/components/toggle-switch";
+import { Skeleton } from "@/components/skeleton";
 import type { DisplayPreferences, UserPreferences } from "@/lib/user-display-preferences";
 
 const TIMELINE_ROWS: {
@@ -93,21 +94,27 @@ export function DisplayPreferencesCard() {
   }
 
   return (
-    <section className="w-full rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
-      <div className="border-b border-zinc-100 pb-4">
-        <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Display</h2>
-        <p className="mt-1 text-sm text-zinc-600">
-          Choose what appears on the home daily chart. Glucose is always shown.
-        </p>
-      </div>
+    <section className="w-full rounded-2xl border border-align-border/90 bg-white/90 p-5 ring-1 ring-black/[0.03]">
+      <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Display</h2>
 
       <div className="pt-4">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Timeline</h3>
-        <p className="mt-1 text-sm text-zinc-600">
-          Toggle layers on the 24-hour timeline (steps, activity, sleep, food).
-        </p>
-
-        {loading ? <p className="mt-4 text-sm text-zinc-500">Loading preferences…</p> : null}
+        {loading ? (
+          <ul
+            className="mt-4 divide-y divide-zinc-100 rounded-xl border border-zinc-100 bg-zinc-50/50"
+            aria-busy="true"
+            aria-label="Loading display preferences"
+          >
+            {[0, 1, 2, 3].map((i) => (
+              <li key={i} className="flex items-center justify-between gap-4 px-4 py-3.5">
+                <div className="min-w-0 flex-1 space-y-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-3 w-full max-w-xs" />
+                </div>
+                <Skeleton className="h-8 w-[3.25rem] shrink-0 rounded-full" />
+              </li>
+            ))}
+          </ul>
+        ) : null}
         {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
 
         {prefs ? (

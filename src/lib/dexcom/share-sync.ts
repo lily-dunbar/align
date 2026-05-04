@@ -362,7 +362,11 @@ function formatIsoNoMillis(date: Date) {
 }
 
 export type ShareSyncOptions = {
-  /** Clamped to 1–90; drives pydexcom `--minutes` (capped again inside pydexcom / script). */
+  /**
+   * Clamped to 1–90.
+   * Share: drives pydexcom `--minutes` (capped again inside pydexcom / script).
+   * OAuth: EGV window is `now - lookbackDays` (default 30 when omitted and readings already exist).
+   */
   lookbackDays?: number;
 };
 

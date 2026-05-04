@@ -66,7 +66,7 @@ export function StepIngestUrlCard({ initialIngestUrl, tokenEndpoint }: Props) {
           Header key ={" "}
           <code className="rounded bg-zinc-100 px-1 py-0.5">X-Shortcut-Secret</code>
         </li>
-        <li>Header value = your app&apos;s `STEPS_INGEST_SECRET` value</li>
+        Header value = same secret as in `.env.local`: `STEPS_INGEST_SECRET` (or `STEPS_TOKEN_SECRET` / `AUTH_SECRET` if you use those instead)
       </ol>
       <div className="mt-3 rounded bg-zinc-50 p-3 text-xs break-all">{ingestUrl}</div>
       <div className="mt-3 flex flex-wrap gap-2">

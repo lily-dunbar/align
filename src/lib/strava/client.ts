@@ -34,6 +34,16 @@ type StravaActivity = {
 const REFRESH_SKEW_SEC = 60;
 const DEFAULT_PAGE_SIZE = 100;
 const MAX_SYNC_PAGES = 200;
+/** Default rolling window for `/athlete/activities` (Strava `after` / `before` epoch seconds). */
+const DEFAULT_STRAVA_SYNC_LOOKBACK_DAYS = 30;
+
+function stravaSyncLookbackDays(): number {
+  const raw = process.env.STRAVA_SYNC_LOOKBACK_DAYS?.trim();
+  if (!raw) return DEFAULT_STRAVA_SYNC_LOOKBACK_DAYS;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) return DEFAULT_STRAVA_SYNC_LOOKBACK_DAYS;
+  return Math.min(365, Math.floor(n));
+}
 
 function asInt(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -170,11 +180,10 @@ export async function syncStravaActivities(userId: string) {
   });
 
   const now = new Date();
-  const rollingSyncLookbackDays = 7;
-  const start = latest?.startAt
-    ? new Date(latest.startAt.getTime() - rollingSyncLookbackDays * 24 * 60 * 60 * 1000)
-    : null;
-  const afterEpoch = start ? epochSec(start) : 1;
+  const lookbackDays = stravaSyncLookbackDays();
+  const windowStart = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
+  const afterEpoch = epochSec(windowStart);
+  const beforeEpoch = epochSec(now);
 
   const accessToken = await getValidStravaAccessToken(userId);
 
@@ -186,7 +195,7 @@ export async function syncStravaActivities(userId: string) {
   while (page <= MAX_SYNC_PAGES) {
     const pageRows = await fetchStravaActivities(accessToken, {
       after: afterEpoch,
-      before: epochSec(now),
+      before: beforeEpoch,
       page,
       perPage: DEFAULT_PAGE_SIZE,
     });
@@ -259,7 +268,8 @@ export async function syncStravaActivities(userId: string) {
     inserted,
     updated,
     firstSync: !latest,
-    startDate: start?.toISOString() ?? null,
+    lookbackDays,
+    windowStart: windowStart.toISOString(),
     endDate: now.toISOString(),
   };
 }

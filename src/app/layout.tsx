@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
-import { Geist, Geist_Mono } from "next/font/google";
+import { auth } from "@clerk/nextjs/server";
+import { Geist, Geist_Mono, Lora } from "next/font/google";
 
 import { AppBottomNav } from "@/components/app-bottom-nav";
 import { AppHeader } from "@/components/app-header";
+import { isDemoModeEnabled } from "@/lib/demo-markers";
+import { getDeveloperDemoModeForUser } from "@/lib/user-display-preferences";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -16,25 +19,34 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const alignSerif = Lora({
+  variable: "--font-align-serif",
+  subsets: ["latin"],
+});
+
 export const metadata: Metadata = {
   title: "Align",
   description: "Metabolic intelligence app",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const { userId } = await auth();
+  const userDemo = userId ? await getDeveloperDemoModeForUser(userId) : false;
+  const demoMode = isDemoModeEnabled() || userDemo;
+
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${alignSerif.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col">
+      <body className="flex min-h-full flex-col bg-background">
         <ClerkProvider>
-          <AppHeader />
-          <div className="flex min-h-0 flex-1 flex-col pb-[calc(4.25rem+env(safe-area-inset-bottom,0px))]">
+          <AppHeader demoMode={demoMode} />
+          <div className="flex min-h-0 flex-1 flex-col pb-[calc(3.25rem+env(safe-area-inset-bottom,0px))]">
             {children}
           </div>
           <AppBottomNav />

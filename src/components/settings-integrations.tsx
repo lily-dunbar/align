@@ -3,38 +3,36 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { StepIngestUrlCard } from "@/components/step-ingest-url-card";
-
-export type IntegrationSnapshot = {
-  dexcom: {
-    connected: boolean;
-    lastSyncAt: string | null;
-    shareCredentialsMode?: boolean;
-    /** True when Share env is set but this user hid the integration (cookie). */
-    shareUiDismissed?: boolean;
-  };
-  strava: { connected: boolean; lastSyncAt: string | null };
-  steps: {
-    connected: boolean;
-    lastIngestAt: string | null;
-    ingestUrl: string | null;
-    /** False when STEPS_INGEST_SECRET is missing — Shortcuts POSTs will fail. */
-    ingestSecretConfigured: boolean;
-    /** True when AUTH_URL points at localhost — phone Shortcuts cannot reach it. */
-    ingestUrlIsLocalDev: boolean;
-  };
-};
-
 const SETTINGS_RETURN = encodeURIComponent("/settings");
 
 function formatWhen(iso: string | null) {
-  if (!iso) return "Never";
+  if (!iso) return "—";
   try {
     return new Date(iso).toLocaleString();
   } catch {
     return "—";
   }
 }
+
+export type IntegrationSnapshot = {
+  dexcom: {
+    connected: boolean;
+    lastSyncAt: string | null;
+    readingCount: number;
+    shareCredentialsMode?: boolean;
+    shareUiDismissed?: boolean;
+  };
+  strava: {
+    connected: boolean;
+    lastSyncAt: string | null;
+    activityCount: number;
+  };
+  steps: {
+    connected: boolean;
+    lastIngestAt: string | null;
+    stepsTotalStored: number;
+  };
+};
 
 export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot }) {
   const router = useRouter();
@@ -130,7 +128,9 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
       if (!resp.ok) {
         throw new Error(json.error ?? `Could not create ingest token (HTTP ${resp.status})`);
       }
-      setNotice("Apple Steps connected. Open View details to copy your ingest URL.");
+      setNotice(
+        "Shortcut ingest URL is ready. You can pull from your Mac’s iCloud file anytime with Pull file.",
+      );
       router.refresh();
     } catch (e) {
       setNotice(e instanceof Error ? e.message : "Could not connect Steps");
@@ -166,14 +166,52 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
     }
   }
 
-  async function syncSteps() {
-    setBusy("sync-steps");
+  async function syncShortcutsIcloudFile() {
+    setBusy("sync-shortcuts-file");
     setNotice(null);
     try {
+      const resp = await fetch("/api/import/health-sync", {
+        method: "POST",
+        credentials: "include",
+      });
+      const text = await resp.text();
+      let json: {
+        ok?: boolean;
+        error?: string;
+        steps?: number;
+        inserted?: number;
+        updated?: number;
+        buckets?: number;
+        lineCount?: number;
+        filePath?: string;
+      } = {};
+      if (text) {
+        try {
+          json = JSON.parse(text) as typeof json;
+        } catch {
+          throw new Error(
+            resp.status === 401
+              ? "Sign in expired — refresh the page and try again."
+              : `Pull file failed (HTTP ${resp.status}). Response was not JSON — check the server terminal for errors.`,
+          );
+        }
+      }
+      if (!resp.ok) {
+        const detail = json.filePath ? ` (${json.filePath})` : "";
+        throw new Error((json.error ?? "Shortcuts file sync failed") + detail);
+      }
+      if (json.lineCount != null) {
+        setNotice(
+          `Pulled ${json.filePath ? `${json.filePath} · ` : ""}${json.lineCount} lines → ${json.buckets ?? 0} hourly buckets (${json.inserted ?? 0} new, ${json.updated ?? 0} updated). Steps today (CSV zone): ${json.steps ?? 0}.`,
+        );
+      } else {
+        setNotice(
+          `Pulled ${json.filePath ? `${json.filePath} · ` : ""}digit-only file → ${json.steps ?? 0} steps (midnight bucket in CSV timezone).`,
+        );
+      }
       router.refresh();
-      setNotice(
-        "Steps: refreshed status. New step totals appear after your Shortcut POSTs to the ingest URL.",
-      );
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Shortcuts file sync failed");
     } finally {
       setBusy(null);
     }
@@ -191,10 +229,11 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
         fetched?: number;
         inserted?: number;
         updated?: number;
+        lookbackDays?: number;
       };
       if (!resp.ok) throw new Error(json.error ?? "Strava sync failed");
       setNotice(
-        `Strava sync: fetched ${json.fetched ?? 0}, inserted ${json.inserted ?? 0}, updated ${json.updated ?? 0}.`,
+        `Strava sync (${json.lookbackDays ?? 30}d window): fetched ${json.fetched ?? 0}, inserted ${json.inserted ?? 0}, updated ${json.updated ?? 0}.`,
       );
       router.refresh();
     } catch (e) {
@@ -205,14 +244,15 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
   }
 
   return (
-    <section className="w-full rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm">
+    <section className="w-full rounded-2xl border border-align-border/90 bg-white/90 p-5 ring-1 ring-black/[0.03]">
       <h2 className="text-lg font-semibold tracking-tight">Integrations</h2>
-      <p className="mt-1 text-sm text-zinc-600">
-        Connect services, run a sync, and review last update times.
-      </p>
 
       {notice ? (
-        <p className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800">
+        <p
+          className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800"
+          role="status"
+          aria-live="polite"
+        >
           {notice}
         </p>
       ) : null}
@@ -221,31 +261,32 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
         {/* Dexcom */}
         <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
+            <div className="min-w-0">
               <p className="font-medium text-zinc-900">Dexcom</p>
               <p className="mt-1 text-xs text-zinc-500">
                 {initial.dexcom.connected ? (
                   initial.dexcom.shareCredentialsMode ? (
                     <>
-                      Connected via Dexcom Share (server credentials). Last data sync:{" "}
-                      {formatWhen(initial.dexcom.lastSyncAt)}
+                      Connected · {initial.dexcom.readingCount.toLocaleString()} readings · Last data
+                      sync: {formatWhen(initial.dexcom.lastSyncAt)}
                     </>
                   ) : (
                     <>
-                      Connected · Last data sync: {formatWhen(initial.dexcom.lastSyncAt)}
+                      Connected · {initial.dexcom.readingCount.toLocaleString()} readings · Last data
+                      sync: {formatWhen(initial.dexcom.lastSyncAt)}
                     </>
                   )
                 ) : initial.dexcom.shareCredentialsMode && initial.dexcom.shareUiDismissed ? (
                   <>
-                    Dexcom Share is still configured on the server (PYDEXCOM_*), but you disconnected
-                    it for this account. Use Show Dexcom Share to sync again, or Connect for OAuth.
+                    Dexcom Share is configured on the server, but disconnected for this account. Show
+                    Dexcom Share or Connect with OAuth.
                   </>
                 ) : (
-                  <>Not connected — use Connect to sign in with Dexcom.</>
+                  <>Not connected.</>
                 )}
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex shrink-0 flex-wrap justify-end gap-2">
               {!initial.dexcom.connected ? (
                 <>
                   {initial.dexcom.shareCredentialsMode && initial.dexcom.shareUiDismissed ? (
@@ -317,17 +358,20 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
         {/* Strava */}
         <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
+            <div className="min-w-0">
               <p className="font-medium text-zinc-900">Strava</p>
               <p className="mt-1 text-xs text-zinc-500">
                 {initial.strava.connected ? (
-                  <>Connected · Last activity sync: {formatWhen(initial.strava.lastSyncAt)}</>
+                  <>
+                    Connected · {initial.strava.activityCount.toLocaleString()} activities · Last
+                    activity sync: {formatWhen(initial.strava.lastSyncAt)}
+                  </>
                 ) : (
-                  <>Not connected — use Connect to sign in with Strava.</>
+                  <>Not connected.</>
                 )}
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex shrink-0 flex-wrap justify-end gap-2">
               {!initial.strava.connected ? (
                 <a
                   className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50"
@@ -337,12 +381,6 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 </a>
               ) : (
                 <>
-                  <a
-                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50"
-                    href={`/api/integrations/strava/connect?return_to=${SETTINGS_RETURN}`}
-                  >
-                    Reconnect
-                  </a>
                   <button
                     type="button"
                     className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
@@ -365,38 +403,45 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
           </div>
         </div>
 
-        {/* Steps */}
+        {/* Apple Steps */}
         <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
-              <p className="font-medium text-zinc-900">Apple Steps (Shortcuts)</p>
+              <p className="font-medium text-zinc-900">Apple Steps</p>
               <p className="mt-1 text-xs text-zinc-500">
                 {initial.steps.connected ? (
-                  <>Connected · Last ingest: {formatWhen(initial.steps.lastIngestAt)}</>
+                  <>
+                    Shortcut POST URL active · Pull file uses the local path in{" "}
+                    <code className="rounded bg-zinc-100 px-1 text-[10px]">.env.local</code> (not
+                    Apple’s API). DB: {initial.steps.stepsTotalStored.toLocaleString()} step-count
+                    sum · Last ingest: {formatWhen(initial.steps.lastIngestAt)}
+                  </>
                 ) : (
-                  <>Not connected — use Connect to enable your ingest URL.</>
+                  <>
+                    Pull file reads{" "}
+                    <code className="rounded bg-zinc-100 px-1 text-[10px]">
+                      ICLOUD_STEPS_JSON_PATH
+                    </code>{" "}
+                    /{" "}
+                    <code className="rounded bg-zinc-100 px-1 text-[10px]">
+                      SHORTCUTS_STEPS_FILE_PATH
+                    </code>{" "}
+                    on the Mac running this app — the file must exist locally (iCloud Drive syncs it
+                    here; the app does not call Apple’s servers). Connect adds an optional HTTP URL
+                    for Shortcuts automation.
+                  </>
                 )}
               </p>
-              {!initial.steps.ingestSecretConfigured ? (
-                <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-950">
-                  Add{" "}
-                  <code className="rounded bg-amber-100/80 px-1 py-0.5">STEPS_INGEST_SECRET</code>{" "}
-                  to your environment (see <code className="rounded bg-amber-100/80 px-1">.env.example</code>
-                  ), restart the server, then use the same value as the{" "}
-                  <code className="rounded bg-amber-100/80 px-1">X-Shortcut-Secret</code> header in Shortcuts.
-                  Without it, posts to the ingest URL return an error.
-                </p>
-              ) : null}
-              {initial.steps.ingestUrlIsLocalDev ? (
-                <p className="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5 text-xs text-sky-950">
-                  Your app URL is localhost. Shortcuts on an iPhone cannot reach it. Deploy the app (or use a
-                  tunnel), set <code className="rounded bg-sky-100/80 px-1">AUTH_URL</code> to the public
-                  <code className="ml-1 rounded bg-sky-100/80 px-1">https://…</code> origin, restart, then use
-                  Connect again so the ingest URL is reachable from the device.
-                </p>
-              ) : null}
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex shrink-0 flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-900 transition hover:bg-emerald-100 disabled:opacity-50"
+                disabled={busy !== null}
+                onClick={() => void syncShortcutsIcloudFile()}
+              >
+                {busy === "sync-shortcuts-file" ? "Pulling…" : "Pull file"}
+              </button>
               {!initial.steps.connected ? (
                 <button
                   type="button"
@@ -404,50 +449,20 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                   disabled={busy !== null}
                   onClick={() => void connectSteps()}
                 >
-                  {busy === "connect-steps" ? "Connecting…" : "Connect"}
+                  {busy === "connect-steps" ? "Connecting…" : "Connect Shortcut URL"}
                 </button>
               ) : (
-                <>
-                  <button
-                    type="button"
-                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
-                    disabled={busy !== null}
-                    onClick={() => void syncSteps()}
-                  >
-                    {busy === "sync-steps" ? "Syncing…" : "Sync"}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-700 transition hover:bg-red-50 disabled:opacity-50"
-                    disabled={busy !== null}
-                    onClick={() => void disconnect("steps")}
-                  >
-                    Disconnect
-                  </button>
-                </>
+                <button
+                  type="button"
+                  className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                  disabled={busy !== null}
+                  onClick={() => void disconnect("steps")}
+                >
+                  Disconnect
+                </button>
               )}
             </div>
           </div>
-
-          {initial.steps.connected && initial.steps.ingestUrl ? (
-            <details className="group/step-details mt-4 border-t border-zinc-200 pt-4">
-              <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium text-emerald-800 [&::-webkit-details-marker]:hidden">
-                <span>View Details</span>
-                <span
-                  className="text-xs text-zinc-400 transition-transform duration-200 group-open/step-details:rotate-180"
-                  aria-hidden
-                >
-                  ▼
-                </span>
-              </summary>
-              <div className="mt-3">
-                <StepIngestUrlCard
-                  initialIngestUrl={initial.steps.ingestUrl}
-                  tokenEndpoint="/api/ingest/steps/token"
-                />
-              </div>
-            </details>
-          ) : null}
         </div>
       </div>
     </section>

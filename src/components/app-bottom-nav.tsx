@@ -13,7 +13,8 @@ export function AppBottomNav() {
   if (
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/sign-up") ||
-    pathname.startsWith("/auth/")
+    pathname.startsWith("/auth/") ||
+    pathname.startsWith("/onboarding")
   ) {
     return null;
   }
@@ -21,22 +22,22 @@ export function AppBottomNav() {
   const items = [
     {
       href: "/",
-      label: "Home",
+      label: "Daily",
       icon: (
-        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.35}>
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
-            d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25"
+            d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5a2.25 2.25 0 002.25-2.25m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5a2.25 2.25 0 012.25 2.25v7.5"
           />
         </svg>
       ),
     },
     {
       href: "/patterns",
-      label: "Patterns",
+      label: "Insights",
       icon: (
-        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.35}>
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -49,7 +50,7 @@ export function AppBottomNav() {
       href: "/settings",
       label: "Settings",
       icon: (
-        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.35}>
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -62,30 +63,32 @@ export function AppBottomNav() {
   ] as const;
 
   return (
-    <nav
-      className="fixed bottom-0 left-0 right-0 z-40 border-t border-zinc-200 bg-white/95 pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-8px_30px_rgba(0,0,0,0.06)] backdrop-blur-md supports-[backdrop-filter]:bg-white/90"
-      aria-label="Main navigation"
-    >
-      <div className="mx-auto grid max-w-lg grid-cols-3 gap-1 px-2 pt-1">
-        {items.map(({ href, label, icon }) => {
-          const active = navActive(href, pathname);
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-2 text-[11px] font-medium transition-colors ${
-                active
-                  ? "text-emerald-700"
-                  : "text-zinc-500 hover:text-zinc-800"
-              }`}
-              aria-current={active ? "page" : undefined}
-            >
-              <span className={active ? "text-emerald-600" : "text-zinc-400"}>{icon}</span>
-              {label}
-            </Link>
-          );
-        })}
-      </div>
-    </nav>
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-5 pb-[calc(0.45rem+env(safe-area-inset-bottom,0px))]">
+      <nav
+        className="pointer-events-auto w-full max-w-2xl rounded-full border border-align-border/90 bg-white/90 py-1 pl-1.5 pr-1.5 shadow-[0_8px_32px_-10px_rgba(27,77,67,0.16)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/85"
+        aria-label="Main navigation"
+      >
+        <div className="grid grid-cols-3 gap-1">
+          {items.map(({ href, label, icon }) => {
+            const active = navActive(href, pathname);
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={`flex flex-col items-center justify-center gap-0.5 rounded-full px-1 py-1.5 text-[10px] font-medium leading-none tracking-tight transition-colors duration-200 ${
+                  active
+                    ? "bg-align-nav-active text-align-forest shadow-[0_1px_2px_rgba(27,77,67,0.1)]"
+                    : "text-zinc-500 hover:text-zinc-800"
+                }`}
+                aria-current={active ? "page" : undefined}
+              >
+                <span className={active ? "text-align-forest" : "text-zinc-400"}>{icon}</span>
+                {label}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+    </div>
   );
 }

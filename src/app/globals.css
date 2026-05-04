@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f7f9f8;
+  --foreground: #15201e;
 }
 
 @theme inline {
@@ -10,17 +10,37 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-serif: var(--font-align-serif);
+  --font-family-serif: var(--font-align-serif), ui-serif, Georgia, "Times New Roman", serif;
+
+  --color-align-forest: #1b4d43;
+  --color-align-forest-muted: #2d6b5e;
+  --color-align-canvas: #f7f9f8;
+  --color-align-border: #e4ebea;
+  --color-align-border-soft: #eef2f1;
+
+  --color-align-card-glucose: #f3f5eb;
+  --color-align-card-tir: #ddeae5;
+  --color-align-card-steps: #d4e3f6;
+
+  --color-align-text-glucose: #45532a;
+  --color-align-text-tir: #1b4d43;
+  --color-align-text-steps: #2a5685;
+
+  --color-align-muted: #5f6f6c;
+  --color-align-nav-active: #e2efe9;
+  --color-align-subtle: #f3f6f5;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #0f1413;
+    --foreground: #e8edec;
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 }

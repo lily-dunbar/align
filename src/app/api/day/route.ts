@@ -11,12 +11,15 @@ import {
   manualWorkouts,
   sleepWindows,
 } from "@/db/schema";
+import { buildDemoDayApiPayload } from "@/lib/demo/build-demo-day-api";
+import { isDemoDataActive } from "@/lib/demo/is-demo-data-active";
 import { dayBoundsUtcForYmd, todayBoundsUtc } from "@/lib/day-bounds";
 import {
   clampTargetHighMgdl,
   clampTargetLowMgdl,
   getUserPreferences,
 } from "@/lib/user-display-preferences";
+import { mergeHourlyStepsPreferShortcutsFile } from "@/lib/merge-hourly-steps-sources";
 import { calculateTir } from "@/lib/tir";
 
 function overlapMs(
@@ -67,6 +70,22 @@ export async function GET(request: NextRequest) {
   }
 
   const { startUtc, endUtcExclusive } = bounds;
+
+  if (await isDemoDataActive(userId)) {
+    const demoPayload = buildDemoDayApiPayload({
+      userId,
+      date: date ?? null,
+      timeZone,
+      startUtc,
+      endUtcExclusive,
+      prefs: {
+        ...prefs,
+        targetLowMgdl,
+        targetHighMgdl,
+      },
+    });
+    return NextResponse.json(demoPayload);
+  }
 
   const [glucose, steps, workouts, food, sleep, stravaActivities] = await Promise.all([
     db.query.glucoseReadings.findMany({
@@ -128,7 +147,8 @@ export async function GET(request: NextRequest) {
     ? Math.round(glucose.reduce((sum, g) => sum + g.mgdl, 0) / glucose.length)
     : null;
 
-  const totalSteps = steps.reduce((sum, s) => sum + s.stepCount, 0);
+  const stepsMerged = mergeHourlyStepsPreferShortcutsFile(steps);
+  const totalSteps = stepsMerged.reduce((sum, s) => sum + s.stepCount, 0);
   const workoutsDurationMin = workouts.reduce(
     (sum, w) =>
       sum +
@@ -180,7 +200,7 @@ export async function GET(request: NextRequest) {
     },
     streams: {
       glucose,
-      hourlySteps: steps,
+      hourlySteps: stepsMerged,
       manualWorkouts: workouts,
       foodEntries: food,
       sleepWindows: sleep,

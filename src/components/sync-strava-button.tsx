@@ -16,7 +16,7 @@ export function SyncStravaButton() {
         type="submit"
         disabled={isSyncing}
       >
-        {isSyncing ? "Syncing Strava..." : "Sync Strava (first sync = 90d)"}
+        {isSyncing ? "Syncing Strava..." : "Sync Strava (last 30 days)"}
       </button>
     </form>
   );

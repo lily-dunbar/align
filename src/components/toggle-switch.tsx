@@ -16,8 +16,8 @@ export function ToggleSwitch({ id, checked, disabled = false, onChange }: Props)
       aria-checked={checked}
       disabled={disabled}
       onClick={onChange}
-      className={`relative inline-flex h-8 w-[3.25rem] shrink-0 cursor-pointer rounded-full border border-transparent transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500 disabled:cursor-not-allowed disabled:opacity-50 ${
-        checked ? "bg-emerald-600" : "bg-zinc-200"
+      className={`relative inline-flex h-8 w-[3.25rem] shrink-0 cursor-pointer rounded-full border border-transparent transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-align-forest disabled:cursor-not-allowed disabled:opacity-50 ${
+        checked ? "bg-align-forest" : "bg-zinc-200"
       }`}
     >
       <span

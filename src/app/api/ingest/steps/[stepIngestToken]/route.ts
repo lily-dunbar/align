@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { db } from "@/db";
 import { hourlySteps, user } from "@/db/schema";
+import { isStepsIngestAuthorized, getStepsIngestSharedSecret } from "@/lib/steps/ingest-auth";
 import { verifyStepIngestToken } from "@/lib/steps/ingest-token";
 import { getUserIdForStepIngestToken } from "@/lib/steps/token-store";
 
@@ -11,25 +12,29 @@ type StepSampleInput = {
   steps: number;
 };
 
-function getRequiredIngestSecret() {
-  const secret = process.env.STEPS_INGEST_SECRET;
-  if (!secret) {
-    throw new Error("STEPS_INGEST_SECRET is not configured");
+function parseStepsValue(raw: unknown, label: string): number {
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return Math.max(0, Math.round(raw));
   }
-  return secret;
+  if (typeof raw === "string" && raw.trim() !== "") {
+    const n = Number(raw);
+    if (Number.isFinite(n)) return Math.max(0, Math.round(n));
+  }
+  throw new Error(`${label} must be a finite number`);
 }
 
-function isAuthorized(req: NextRequest) {
-  const required = getRequiredIngestSecret();
-  const authHeader = req.headers.get("authorization");
-  const shortcutHeader = req.headers.get("x-shortcut-secret");
-
-  const bearer =
-    authHeader && authHeader.startsWith("Bearer ")
-      ? authHeader.slice("Bearer ".length)
-      : null;
-
-  return bearer === required || shortcutHeader === required;
+function parseTimestampValue(raw: unknown, label: string): string {
+  if (typeof raw === "string") {
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+    throw new Error(`${label} must be a valid ISO datetime string`);
+  }
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    const ms = raw < 1e12 ? raw * 1000 : raw;
+    const d = new Date(ms);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  }
+  throw new Error(`${label} must be an ISO string or unix time`);
 }
 
 function toHourBucket(rawTimestamp: string) {
@@ -51,8 +56,21 @@ function toHourBucket(rawTimestamp: string) {
 }
 
 function parseSamples(payload: unknown): StepSampleInput[] {
+  if (Array.isArray(payload)) {
+    return payload.map((sample, idx) => {
+      if (!sample || typeof sample !== "object") {
+        throw new Error(`samples[${idx}] must be an object`);
+      }
+      const row = sample as { timestamp?: unknown; steps?: unknown };
+      return {
+        timestamp: parseTimestampValue(row.timestamp, `samples[${idx}].timestamp`),
+        steps: parseStepsValue(row.steps, `samples[${idx}].steps`),
+      };
+    });
+  }
+
   if (!payload || typeof payload !== "object") {
-    throw new Error("Body must be a JSON object");
+    throw new Error("Body must be a JSON object or array of { timestamp, steps }");
   }
 
   const obj = payload as {
@@ -67,30 +85,17 @@ function parseSamples(payload: unknown): StepSampleInput[] {
         throw new Error(`samples[${idx}] must be an object`);
       }
       const row = sample as { timestamp?: unknown; steps?: unknown };
-      if (typeof row.timestamp !== "string") {
-        throw new Error(`samples[${idx}].timestamp must be a string`);
-      }
-      if (typeof row.steps !== "number" || !Number.isFinite(row.steps)) {
-        throw new Error(`samples[${idx}].steps must be a number`);
-      }
       return {
-        timestamp: row.timestamp,
-        steps: Math.max(0, Math.round(row.steps)),
+        timestamp: parseTimestampValue(row.timestamp, `samples[${idx}].timestamp`),
+        steps: parseStepsValue(row.steps, `samples[${idx}].steps`),
       };
     });
   }
 
-  if (typeof obj.timestamp !== "string") {
-    throw new Error("timestamp must be a string");
-  }
-  if (typeof obj.steps !== "number" || !Number.isFinite(obj.steps)) {
-    throw new Error("steps must be a number");
-  }
-
   return [
     {
-      timestamp: obj.timestamp,
-      steps: Math.max(0, Math.round(obj.steps)),
+      timestamp: parseTimestampValue(obj.timestamp, "timestamp"),
+      steps: parseStepsValue(obj.steps, "steps"),
     },
   ];
 }
@@ -100,7 +105,16 @@ export async function POST(
   context: { params: Promise<{ stepIngestToken: string }> },
 ) {
   try {
-    if (!isAuthorized(request)) {
+    if (!getStepsIngestSharedSecret()) {
+      return NextResponse.json(
+        {
+          error:
+            "Step ingest is not configured: set STEPS_INGEST_SECRET (or STEPS_TOKEN_SECRET / AUTH_SECRET) in .env.local",
+        },
+        { status: 500 },
+      );
+    }
+    if (!isStepsIngestAuthorized(request)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 

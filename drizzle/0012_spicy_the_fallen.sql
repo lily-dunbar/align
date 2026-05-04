@@ -1,0 +1,2 @@
+ALTER TABLE "user_display_preferences" ADD COLUMN "developer_demo_mode" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "user_display_preferences" ADD COLUMN "onboarding_completed" boolean DEFAULT true NOT NULL;

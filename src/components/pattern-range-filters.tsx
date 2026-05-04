@@ -22,7 +22,7 @@ export function PatternRangeFilters({
     <div
       className="flex flex-wrap gap-2"
       role="tablist"
-      aria-label="Pattern date range"
+      aria-label="Insights date range"
     >
       {WINDOWS.map(({ id, label }) => {
         const selected = id === active;
@@ -35,8 +35,8 @@ export function PatternRangeFilters({
             href={href(id)}
             className={
               selected
-                ? "rounded-full bg-zinc-900 px-4 py-2 text-sm font-medium text-white shadow-sm"
-                : "rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-50"
+                ? "rounded-full bg-align-forest px-4 py-2 text-sm font-medium text-white shadow-sm shadow-black/10"
+                : "rounded-full border border-align-border/90 bg-white/90 px-4 py-2 text-sm font-medium text-zinc-700 ring-1 ring-black/[0.03] transition hover:bg-align-subtle"
             }
           >
             {label}

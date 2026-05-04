@@ -1,7 +1,11 @@
 import "server-only";
 
+import { cache } from "react";
+
 import { and, asc, eq, gte, lt } from "drizzle-orm";
 
+import { buildDemoPatternWindowSummaries } from "@/lib/demo/build-demo-window-summaries";
+import { isDemoDataActive } from "@/lib/demo/is-demo-data-active";
 import { db } from "@/db";
 import { glucoseReadings, hourlySteps } from "@/db/schema";
 import type { PatternWindow } from "@/lib/patterns/types";
@@ -83,6 +87,17 @@ async function aggregatePeriod(
   };
 }
 
+/** Deduped for parallel RSC loaders — pass the same `atIso` as patterns feature when applicable. */
+export const getPatternWindowSummariesForIso = cache(
+  async (
+    userId: string,
+    window: PatternWindow,
+    atIso: string,
+  ): Promise<PatternWindowSummaryResult> => {
+    return getPatternWindowSummariesImpl(userId, window, new Date(atIso));
+  },
+);
+
 /**
  * Rolling window [now − N days, now) vs the immediately prior window of the same length.
  */
@@ -91,12 +106,24 @@ export async function getPatternWindowSummaries(
   window: PatternWindow,
   at: Date = new Date(),
 ): Promise<PatternWindowSummaryResult> {
-  const prefs = await getUserPreferences(userId);
+  return getPatternWindowSummariesForIso(userId, window, at.toISOString());
+}
+
+async function getPatternWindowSummariesImpl(
+  userId: string,
+  window: PatternWindow,
+  at: Date,
+): Promise<PatternWindowSummaryResult> {
   const { startUtc: curStart, endUtcExclusive: curEnd, labelDays } = rollingRangeUtc(
     window,
     at,
   );
 
+  if (await isDemoDataActive(userId)) {
+    return buildDemoPatternWindowSummaries(window, labelDays);
+  }
+
+  const prefs = await getUserPreferences(userId);
   const prevEndExclusive = curStart;
   const prevStart = new Date(
     at.getTime() - 2 * labelDays * 24 * 60 * 60 * 1000,

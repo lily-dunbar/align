@@ -33,6 +33,8 @@ export type UserPreferences = {
   targetHighMgdl: number;
   targetTirPercent: number;
   targetStepsPerDay: number;
+  developerDemoMode: boolean;
+  onboardingCompleted: boolean;
 };
 
 export type DisplayPreferences = Pick<
@@ -56,6 +58,8 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   targetHighMgdl: GLUCOSE_TARGET_HIGH_DEFAULT,
   targetTirPercent: TARGET_TIR_PERCENT_DEFAULT,
   targetStepsPerDay: TARGET_STEPS_PER_DAY_DEFAULT,
+  developerDemoMode: false,
+  onboardingCompleted: false,
 };
 
 async function ensureLocalUser(userId: string) {
@@ -105,6 +109,8 @@ function rowToPreferences(row: typeof userDisplayPreferences.$inferSelect): User
     targetHighMgdl: row.targetHighMgdl,
     targetTirPercent: row.targetTirPercent,
     targetStepsPerDay: row.targetStepsPerDay,
+    developerDemoMode: row.developerDemoMode ?? false,
+    onboardingCompleted: row.onboardingCompleted ?? false,
   };
 }
 
@@ -132,6 +138,10 @@ function mergePreferences(
   if (typeof patch.targetStepsPerDay === "number") {
     next.targetStepsPerDay = clampTargetStepsPerDay(patch.targetStepsPerDay);
   }
+  if (typeof patch.developerDemoMode === "boolean") next.developerDemoMode = patch.developerDemoMode;
+  if (typeof patch.onboardingCompleted === "boolean") {
+    next.onboardingCompleted = patch.onboardingCompleted;
+  }
   return next;
 }
 
@@ -146,6 +156,15 @@ export async function getOrCreateDisplayPreferences(
   userId: string,
 ): Promise<UserPreferences> {
   return getUserPreferences(userId);
+}
+
+/** Banner: per-user demo flag (no insert). */
+export async function getDeveloperDemoModeForUser(userId: string): Promise<boolean> {
+  const row = await db.query.userDisplayPreferences.findFirst({
+    where: eq(userDisplayPreferences.userId, userId),
+    columns: { developerDemoMode: true },
+  });
+  return Boolean(row?.developerDemoMode);
 }
 
 export async function getUserPreferences(userId: string): Promise<UserPreferences> {
@@ -196,6 +215,8 @@ export async function updateUserPreferences(
       targetHighMgdl: merged.targetHighMgdl,
       targetTirPercent: merged.targetTirPercent,
       targetStepsPerDay: merged.targetStepsPerDay,
+      developerDemoMode: merged.developerDemoMode,
+      onboardingCompleted: merged.onboardingCompleted,
       updatedAt: new Date(),
     })
     .where(eq(userDisplayPreferences.userId, userId))

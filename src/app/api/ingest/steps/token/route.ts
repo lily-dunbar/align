@@ -18,7 +18,7 @@ function buildResponse(userId: string, token: string) {
     ingestUrl: `${appBase}/api/ingest/steps/${token}`,
     notes: [
       "Use this URL in Apple Shortcuts 'Get Contents of URL'.",
-      "Set X-Shortcut-Secret to your STEPS_INGEST_SECRET.",
+      "Set X-Shortcut-Secret (or Authorization: Bearer) to the same value as STEPS_INGEST_SECRET, STEPS_TOKEN_SECRET, or AUTH_SECRET in .env.local.",
       "POST JSON body with either { timestamp, steps } or { samples: [{ timestamp, steps }, ...] }.",
     ],
   };

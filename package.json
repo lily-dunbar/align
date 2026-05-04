@@ -14,11 +14,14 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "seed:demo": "tsx scripts/seed-demo.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",
     "@clerk/nextjs": "^7.2.9",
+    "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
     "drizzle-orm": "^0.45.2",
     "next": "16.2.4",
     "postgres": "^3.4.9",
@@ -39,6 +42,7 @@
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.3",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

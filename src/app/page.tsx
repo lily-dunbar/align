@@ -1,10 +1,14 @@
 import { Suspense } from "react";
 import { auth } from "@clerk/nextjs/server";
+import { redirect } from "next/navigation";
 
+import { DayInsightsPanel } from "@/components/day-insights-panel";
 import { DaySummaryCards } from "@/components/day-summary-cards";
 import { DateNav } from "@/components/date-nav";
 import { DailyViewChart } from "@/components/daily-view-chart";
 import { ManualEntryPanel } from "@/components/manual-entry-panel";
+import { DailyDashboardSkeleton } from "@/components/skeleton";
+import { needsOnboarding } from "@/lib/onboarding";
 
 type HomeProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -20,6 +24,9 @@ function readParam(
 
 export default async function Home({ searchParams }: HomeProps) {
   const { userId } = await auth();
+  if (userId && (await needsOnboarding(userId))) {
+    redirect("/onboarding");
+  }
   const params = (await searchParams) ?? {};
   const dateParam = readParam(params, "date");
   const selectedDateYmd =
@@ -28,13 +35,9 @@ export default async function Home({ searchParams }: HomeProps) {
       : new Date().toISOString().slice(0, 10);
 
   return (
-    <main className="mx-auto flex min-h-[100dvh] w-full max-w-6xl flex-col gap-6 bg-zinc-50 px-4 py-8 md:px-8">
+    <main className="mx-auto flex min-h-[100dvh] w-full max-w-6xl flex-col gap-8 bg-background px-4 py-8 md:px-8 md:py-10">
       {userId ? (
-        <Suspense
-          fallback={
-            <div className="min-h-[22rem] w-full animate-pulse rounded-2xl bg-zinc-100" />
-          }
-        >
+        <Suspense fallback={<DailyDashboardSkeleton />}>
           <DateNav initialDateYmd={selectedDateYmd} />
           <ManualEntryPanel
             key={selectedDateYmd}
@@ -43,12 +46,9 @@ export default async function Home({ searchParams }: HomeProps) {
           />
           <DailyViewChart dateYmd={selectedDateYmd} />
           <DaySummaryCards dateYmd={selectedDateYmd} />
+          <DayInsightsPanel key={selectedDateYmd} dateYmd={selectedDateYmd} />
         </Suspense>
       ) : null}
-
-      <p className="mt-auto border-t border-zinc-200/90 pt-6 text-center text-sm text-zinc-500">
-        Metabolic intelligence for daily diabetes decisions.
-      </p>
     </main>
   );
 }

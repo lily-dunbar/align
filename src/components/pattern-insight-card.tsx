@@ -1,57 +1,67 @@
+import { PatternLearnMorePanel } from "@/components/pattern-learn-more-panel";
+import { confidenceBadgeLabel, humanConfidenceLabel } from "@/lib/patterns/confidence-label";
 import type { PatternInsightJson } from "@/lib/patterns/types";
 
 type Props = {
   pattern: PatternInsightJson;
   compact?: boolean;
+  targetLowMgdl: number;
+  targetHighMgdl: number;
 };
 
-function typeBadgeClasses(type: PatternInsightJson["type"]) {
-  switch (type) {
-    case "Temporal":
-      return "bg-violet-100 text-violet-900";
-    case "Steps":
-      return "bg-sky-100 text-sky-900";
-    case "Sessions":
-      return "bg-amber-100 text-amber-950";
-    default:
-      return "bg-zinc-100 text-zinc-800";
-  }
+function toTitleCaseSourceLabel(s: string): string {
+  const t = s.trim();
+  if (!t) return t;
+  return t
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
-export function PatternInsightCard({ pattern, compact }: Props) {
-  const pad = compact ? "p-4" : "p-5";
+function formatSources(sources: string[]): string {
+  return sources.map((s) => toTitleCaseSourceLabel(s)).join(" · ");
+}
+
+export function PatternInsightCard({ pattern, compact, targetLowMgdl, targetHighMgdl }: Props) {
+  const pad = compact ? "p-5" : "p-6";
+  const sourcesLine = formatSources(pattern.linkedSources);
+  const confidenceHint = humanConfidenceLabel(pattern.confidencePercent);
 
   return (
     <article
-      className={`rounded-xl border border-zinc-200 bg-white shadow-sm ${pad}`}
+      className={`rounded-2xl border border-align-border/80 bg-white shadow-sm shadow-black/[0.03] ring-1 ring-black/[0.02] ${pad}`}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${typeBadgeClasses(pattern.type)}`}
-        >
-          {pattern.type}
-        </span>
-        <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-[11px] font-medium text-zinc-700">
-          {pattern.confidencePercent}% confidence
-        </span>
-      </div>
-
       <h3
-        className={`font-semibold tracking-tight text-zinc-900 ${compact ? "mt-2 text-base" : "mt-3 text-lg"}`}
+        className={`font-semibold tracking-tight text-foreground ${compact ? "text-base leading-snug" : "text-lg leading-snug"}`}
       >
         {pattern.title}
       </h3>
 
       <p
-        className={`leading-relaxed text-zinc-600 ${compact ? "mt-1.5 text-sm" : "mt-2 text-sm"}`}
+        className={`leading-relaxed text-align-muted ${compact ? "mt-3 text-sm" : "mt-4 text-[15px]"}`}
       >
         {pattern.description}
       </p>
 
-      <p className="mt-3 text-xs text-zinc-500">
-        <span className="font-medium text-zinc-600">Linked sources:</span>{" "}
-        {pattern.linkedSources.join(" · ")}
-      </p>
+      <div className={`flex flex-wrap items-center gap-2.5 ${compact ? "mt-3" : "mt-4"}`}>
+        <span
+          className="inline-flex rounded-full bg-align-nav-active px-2.5 py-1 text-xs font-medium text-align-forest"
+          title={confidenceHint}
+        >
+          {confidenceBadgeLabel(pattern.confidencePercent)}
+        </span>
+        {sourcesLine ? (
+          <span className="text-sm font-semibold text-align-forest">{sourcesLine}</span>
+        ) : null}
+      </div>
+
+      {pattern.learnMore ? (
+        <PatternLearnMorePanel
+          learnMore={pattern.learnMore}
+          targetLowMgdl={targetLowMgdl}
+          targetHighMgdl={targetHighMgdl}
+        />
+      ) : null}
     </article>
   );
 }

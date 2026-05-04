@@ -1,12 +1,12 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, sum } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { SettingsAccountCard } from "@/components/settings-account-card";
 import { DisplayPreferencesCard } from "@/components/display-preferences-card";
-import { SettingsPatternCard } from "@/components/settings-pattern-card";
+import { SettingsDeveloperCard } from "@/components/settings-developer-card";
 import { SettingsTargetsCard } from "@/components/settings-targets-card";
-import { SettingsDebugSection } from "@/components/settings-debug-section";
 import {
   SettingsIntegrations,
   type IntegrationSnapshot,
@@ -19,22 +19,12 @@ import {
   hourlySteps,
   stepIngestTokens,
   stravaTokens,
+  userDisplayPreferences,
 } from "@/db/schema";
+import { isDeveloperSettingsEnabled } from "@/lib/developer-settings";
+import { needsOnboarding } from "@/lib/onboarding";
 import { DEXCOM_SHARE_UI_HIDDEN_COOKIE } from "@/lib/dexcom/share-ui-cookie";
 import { isPydexcomShareConfigured } from "@/lib/dexcom/share-sync";
-
-function appBaseUrl() {
-  return (process.env.AUTH_URL ?? "http://localhost:4000").replace(/\/$/, "");
-}
-
-function isLocalAppOrigin(url: string) {
-  try {
-    const { hostname } = new URL(url);
-    return hostname === "localhost" || hostname === "127.0.0.1";
-  } catch {
-    return false;
-  }
-}
 
 function readParam(
   params: Record<string, string | string[] | undefined>,
@@ -52,6 +42,9 @@ export default async function SettingsPage({
   const { userId } = await auth();
   if (!userId) {
     redirect("/sign-in");
+  }
+  if (await needsOnboarding(userId)) {
+    redirect("/onboarding");
   }
 
   const params = (await searchParams) ?? {};
@@ -78,10 +71,6 @@ export default async function SettingsPage({
     columns: { token: true },
   });
 
-  const base = appBaseUrl();
-  const stepsIngestSecretConfigured = Boolean(process.env.STEPS_INGEST_SECRET?.trim());
-  const stepsIngestUrlIsLocalDev = isLocalAppOrigin(base);
-
   const lastDexcomGlucoseRow =
     dexcomRow || shareDexcom
       ? await db.query.glucoseReadings.findFirst({
@@ -105,14 +94,40 @@ export default async function SettingsPage({
       )?.updatedAt.toISOString() ?? null
     : null;
 
-  const lastStepsAt = stepTok
-    ? (
-        await db.query.hourlySteps.findFirst({
-          where: eq(hourlySteps.userId, userId),
-          orderBy: [desc(hourlySteps.receivedAt)],
-          columns: { receivedAt: true },
-        })
-      )?.receivedAt.toISOString() ?? null
+  const lastStepsRow = await db.query.hourlySteps.findFirst({
+    where: eq(hourlySteps.userId, userId),
+    orderBy: [desc(hourlySteps.receivedAt)],
+    columns: { receivedAt: true },
+  });
+  const lastStepsAt = lastStepsRow?.receivedAt.toISOString() ?? null;
+
+  const [dexcomReadingsAgg] = await db
+    .select({ n: count() })
+    .from(glucoseReadings)
+    .where(
+      and(eq(glucoseReadings.userId, userId), eq(glucoseReadings.source, "dexcom")),
+    );
+
+  const [stravaActivityAgg] = await db
+    .select({ n: count() })
+    .from(activities)
+    .where(and(eq(activities.userId, userId), eq(activities.provider, "strava")));
+
+  const [stepsSumAgg] = await db
+    .select({ total: sum(hourlySteps.stepCount) })
+    .from(hourlySteps)
+    .where(eq(hourlySteps.userId, userId));
+
+  const dexcomReadingCount = Number(dexcomReadingsAgg?.n ?? 0);
+  const stravaActivityCount = Number(stravaActivityAgg?.n ?? 0);
+  const stepsTotalCount = Number(stepsSumAgg?.total ?? 0);
+
+  const showDeveloperSettings = isDeveloperSettingsEnabled();
+  const developerPrefsRow = showDeveloperSettings
+    ? await db.query.userDisplayPreferences.findFirst({
+        where: eq(userDisplayPreferences.userId, userId),
+        columns: { developerDemoMode: true, onboardingCompleted: true },
+      })
     : null;
 
   const initial: IntegrationSnapshot = {
@@ -121,26 +136,26 @@ export default async function SettingsPage({
       lastSyncAt: lastDexcomAt,
       shareCredentialsMode: shareDexcom,
       shareUiDismissed,
+      readingCount: dexcomReadingCount,
     },
     strava: {
       connected: !!stravaRow,
       lastSyncAt: lastStravaAt,
+      activityCount: stravaActivityCount,
     },
     steps: {
       connected: !!stepTok,
       lastIngestAt: lastStepsAt,
-      ingestUrl: stepTok ? `${base}/api/ingest/steps/${stepTok.token}` : null,
-      ingestSecretConfigured: stepsIngestSecretConfigured,
-      ingestUrlIsLocalDev: stepsIngestUrlIsLocalDev,
+      stepsTotalStored: stepsTotalCount,
     },
   };
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col gap-6 bg-zinc-50 px-4 py-8 md:max-w-4xl md:px-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="mt-1 text-sm text-zinc-600">
-          Targets, pattern threshold, display timeline, then Dexcom, Strava, and Apple Steps.
+    <main className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col gap-8 bg-background px-4 py-8 md:max-w-4xl md:px-8 md:py-10">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">Settings</h1>
+        <p className="text-sm text-align-muted">
+          Connect data sources, then tune display and targets.
         </p>
       </div>
 
@@ -165,15 +180,22 @@ export default async function SettingsPage({
         </p>
       ) : null}
 
-      <SettingsTargetsCard />
-      <SettingsPatternCard />
-      <DisplayPreferencesCard />
       <SettingsIntegrations
         key={`dex:${initial.dexcom.connected}-strava:${initial.strava.connected}-steps:${initial.steps.connected}`}
         initial={initial}
       />
 
-      <SettingsDebugSection />
+      <DisplayPreferencesCard />
+      <SettingsTargetsCard />
+
+      <SettingsAccountCard />
+
+      {showDeveloperSettings ? (
+        <SettingsDeveloperCard
+          initialDeveloperDemoMode={developerPrefsRow?.developerDemoMode ?? false}
+          initialOnboardingCompleted={developerPrefsRow?.onboardingCompleted ?? true}
+        />
+      ) : null}
     </main>
   );
 }

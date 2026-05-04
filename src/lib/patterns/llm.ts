@@ -8,8 +8,8 @@ import type {
   PatternWindow,
 } from "@/lib/patterns/types";
 
-/** Default: Claude Sonnet 4 — override with `ANTHROPIC_MODEL` if your workspace uses another release. */
-const DEFAULT_MODEL = "claude-sonnet-4-20250514";
+/** Default: current Sonnet on the Messages API — override with `ANTHROPIC_MODEL` if needed. */
+const DEFAULT_MODEL = "claude-sonnet-4-6";
 
 function modelId() {
   return process.env.ANTHROPIC_MODEL?.trim() || DEFAULT_MODEL;
@@ -26,20 +26,24 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return v != null && typeof v === "object" && !Array.isArray(v);
 }
 
-/** Maps LLM output. Steps = daily/hourly step volume; Sessions = workouts (manual + Strava). */
+/** Maps LLM output. Day-level movement vs glucose maps to Steps (not Sessions). */
 function normalizeType(raw: unknown): PatternTypeLabel | null {
   if (typeof raw !== "string") return null;
   const u = raw.trim().toLowerCase();
   if (u === "temporal") return "Temporal";
-  if (u === "steps" || u === "step") return "Steps";
+  if (u === "steps" || u === "step" || u === "day_activity" || u === "activity_days") {
+    return "Steps";
+  }
   if (
     u === "sessions" ||
     u === "session" ||
     u === "workout" ||
     u === "workouts" ||
-    u === "activity"
-  )
+    u === "run" ||
+    u === "runs"
+  ) {
     return "Sessions";
+  }
   return null;
 }
 
@@ -92,8 +96,8 @@ export type FetchLlmPatternsOutcome =
   | { kind: "ok"; patterns: PatternInsightJson[] };
 
 /**
- * Calls Claude with full {@link PatternFeatureContext} (BG aggregates, steps stats, session/workout stats).
- * Returns `ok` with an empty array when the model concludes there are no patterns.
+ * Calls Claude with {@link PatternFeatureContext}. Temporal, Sessions, and Steps
+ * (day-level step totals vs glucose only). Plain-language, patient-facing copy.
  */
 export async function fetchLlmPatterns(args: {
   window: PatternWindow;
@@ -108,41 +112,33 @@ export async function fetchLlmPatterns(args: {
     const msg = await client.messages.create({
       model: modelId(),
       max_tokens: 4096,
-      system: `You are analyzing ONE rolling period of personal CGM + movement + workout aggregates (JSON below). No diagnosis, treatment, or dosing advice.
+      system: `You analyze ONE rolling window of personal Dexcom glucose data + workout + daily movement data (JSON). No diagnosis, treatment, or dosing advice.
 
-You MUST reason across ALL streams before emitting patterns:
-1. **BG / CGM** — temporal.* (hourly bands, weekday vs weekend, peaks/troughs, evening highs), glucoseReadingsCount, meanMgdl, tir.
-2. **Steps** — hourly buckets → steps.* (avg daily steps, high- vs low-step days vs mean glucose, goals).
-3. **Activity / workouts** — sessions.* (manual + Strava counts; CGM near workouts vs away; before/during deltas for run-like sessions).
+**Output types — exactly three:**
+- **Temporal** — Dexcom glucose vs clock time or weekday/weekend. When temporal.dinnerEveningVsMorningDeltaMgdl is sizable, prefer a **6–9pm vs morning** headline with **~X mg/dL** rounded (use the delta magnitude from JSON; say "higher" or "lower" correctly).
+- **Sessions** — Dexcom glucose vs **logged** workouts (Strava/manual). When sessions.runLikeSessionsDeltaOverLongRunMi ≥ 2 and deltas exist, use a **short title** (no mg/dL in the title): e.g. "Slight BG drop on runs", "BG drop on longer runs", "Slight BG rise on runs", based on typical size of |avgMgdlDeltaRunLikeOverLongRunMi| (slight ≈ under ~16 mg/dL, large ≈ 40+). Put numbers only in **description**, e.g. "Blood sugars tend to drop by about 45–65 mg/dL on runs over 2 mi in this window (during vs ~90 minutes before start)…" Use deltaMgdlP25LongRunMi–P75 as a **positive magnitude span** for drops (e.g. −50 to −66 ⇒ "50–66"), never "rises" with negative numbers. Runs **≥ sessions.longRunMilesThreshold** miles. Negative delta = drop; positive = rise.
+- **Steps** — **Only** mean daily glucose on days with daily steps ≥ steps.activeDayStepsThreshold vs days below it (use meanDailyMgdlStepsGteThreshold, meanDailyMgdlStepsLtThreshold, meanMgdlDeltaLessActiveMinusActive). **Forbidden:** hourly step curves, "high-step hours," or generic Steps without that day-threshold split.
 
-Compare domains (e.g., weekend BG vs weekday BG vs step volume; workout days vs glucose; high-step days vs low-step days). Prefer insights that relate TWO domains when dataCoverage counts show multiple streams exist.
+**Quantification (whenever the JSON numbers exist):** Descriptions should state **approximate mg/dL** and the **rule** (e.g. runs over ~2 mi, step threshold). **Exception:** long-run **Sessions** card titles stay qualitative (no mg/dL in title)—numbers belong in the description. Temporal/Steps titles may still use ~X mg/dL when helpful. Round to whole mg/dL. Do not invent numbers — only use fields provided (you may summarize P25–P75 as a span).
+
+**Voice:** Lead with the finding; 1–2 sentences; tentative language for causes. No sample counts, no method jargon ("p25," "cohort"), no ± window labels. Prefer **Dexcom** or **Dexcom data** in user-facing wording—do not say CGM or continuous glucose monitor.
+
+**confidencePercent** — 0–100 for ranking; **linkedSources** — "Dexcom", "Strava", "Manual workouts", "Apple Steps" if hourly step data informed the day totals.
+
+Return **2–4 patterns total**, distinct angles. Prefer this mix when supported: one **Temporal** (evening vs morning if delta is clear), one **Sessions** (long-run Δ if present), one **Steps** (threshold days if steps.meanMgdlDeltaLessActiveMinusActive is meaningful). Skip types the JSON cannot support.
+
+If evidence is thin, return fewer patterns or {"patterns":[]} — never pad.
 
 Schema (always return this shape):
-{"patterns":[{"id":"slug","title":"informative headline","description":"2–4 sentences","type":"Temporal"|"Steps"|"Sessions","confidencePercent":0-100,"linkedSources":["Dexcom"]}]}
+{"patterns":[{"id":"slug","title":"…","description":"…","type":"Temporal"|"Sessions"|"Steps","confidencePercent":0-100,"linkedSources":["dexcom"]}]}
 
-If after reviewing temporal.*, steps.*, and sessions.* you identify NO supported comparative patterns, return exactly {"patterns":[]}.
-
-**title (required style)**
-One line, 12–120 characters. Comparative when evidence supports it (see prior examples in product rules).
-
-**type**
-- **Temporal** — BG vs clock / calendar (temporal.*).
-- **Steps** — BG vs step-count / daily movement (steps.* only — NOT workouts).
-- **Sessions** — BG vs workouts / structured activity (sessions.*). Use "Sessions" for workout-related findings; do NOT use type Steps for workouts.
-
-**confidencePercent** — evidence strength for this window (0–100).
-
-**linkedSources** — Dexcom when CGM is cited; Apple Steps when steps.* cited; Strava / Manual workouts when sessions.* cited.
-
-At most 3 patterns per type (≤9 total).`,
+If nothing defensible, return {"patterns":[]}.`,
       messages: [
         {
           role: "user",
           content: `Window: ${args.window}
 
-Confirm you considered dataCoverage (counts per stream) plus temporal, steps, and sessions sections. Compare BG vs steps vs workout activity where counts allow.
-
-Stats JSON:
+Follow dataCoverage.analysisHint. Stats JSON:
 ${statsJson}`,
         },
       ],

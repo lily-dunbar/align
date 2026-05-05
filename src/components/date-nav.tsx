@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { OPEN_MANUAL_MODAL_EVENT } from "@/lib/day-view-events";
+import { useEffectiveTimeZone } from "@/hooks/use-effective-timezone";
 import { getLocalCalendarYmd } from "@/lib/local-calendar-ymd";
 import { useResolvedDayYmd } from "@/lib/use-resolved-day-ymd";
 
@@ -11,7 +12,7 @@ type Props = {
   initialDateYmd: string;
 };
 
-/** Move by calendar days in the browser's local timezone (not UTC midnight). */
+/** Move by calendar days using JS local date arithmetic (chosen calendar day strings). */
 function addDays(dateYmd: string, delta: number) {
   const [y, m, d] = dateYmd.split("-").map(Number);
   const base = new Date(y, m - 1, d + delta);
@@ -25,8 +26,9 @@ export function DateNav({ initialDateYmd }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
+  const effectiveTz = useEffectiveTimeZone();
   const selectedDate = useResolvedDayYmd(initialDateYmd);
-  const todayYmd = getLocalCalendarYmd();
+  const todayYmd = getLocalCalendarYmd(new Date(), effectiveTz);
   const isAtLatestDay = selectedDate >= todayYmd;
 
   useEffect(() => {

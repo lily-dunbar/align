@@ -21,7 +21,10 @@ import {
   stravaTokens,
   userDisplayPreferences,
 } from "@/db/schema";
-import { isDeveloperSettingsEnabled } from "@/lib/developer-settings";
+import {
+  isDemoModeSelfServeUser,
+  isDeveloperSettingsEnabled,
+} from "@/lib/developer-settings";
 import { needsOnboarding } from "@/lib/onboarding";
 import { DEXCOM_SHARE_UI_HIDDEN_COOKIE } from "@/lib/dexcom/share-ui-cookie";
 import { isPydexcomShareConfigured } from "@/lib/dexcom/share-sync";
@@ -123,12 +126,15 @@ export default async function SettingsPage({
   const stepsTotalCount = Number(stepsSumAgg?.total ?? 0);
 
   const showDeveloperSettings = isDeveloperSettingsEnabled();
-  const developerPrefsRow = showDeveloperSettings
-    ? await db.query.userDisplayPreferences.findFirst({
-        where: eq(userDisplayPreferences.userId, userId),
-        columns: { developerDemoMode: true, onboardingCompleted: true },
-      })
-    : null;
+  const showDemoModeSelfServe = isDemoModeSelfServeUser(userId) && !showDeveloperSettings;
+
+  const developerPrefsRow =
+    showDeveloperSettings || showDemoModeSelfServe
+      ? await db.query.userDisplayPreferences.findFirst({
+          where: eq(userDisplayPreferences.userId, userId),
+          columns: { developerDemoMode: true, onboardingCompleted: true },
+        })
+      : null;
 
   const initial: IntegrationSnapshot = {
     dexcom: {
@@ -185,6 +191,14 @@ export default async function SettingsPage({
 
       {showDeveloperSettings ? (
         <SettingsDeveloperCard
+          initialDeveloperDemoMode={developerPrefsRow?.developerDemoMode ?? false}
+          initialOnboardingCompleted={developerPrefsRow?.onboardingCompleted ?? true}
+        />
+      ) : null}
+
+      {!showDeveloperSettings && showDemoModeSelfServe ? (
+        <SettingsDeveloperCard
+          demoOnly
           initialDeveloperDemoMode={developerPrefsRow?.developerDemoMode ?? false}
           initialOnboardingCompleted={developerPrefsRow?.onboardingCompleted ?? true}
         />

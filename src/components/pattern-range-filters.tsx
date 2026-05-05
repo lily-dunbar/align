@@ -18,9 +18,15 @@ const WINDOWS: { id: PatternWindow; label: string }[] = [
 export function PatternRangeFilters({
   active,
   timeZone,
+  onWindowChange,
+  navigationPending = false,
 }: {
   active: PatternWindow;
   timeZone: string;
+  /** Client navigation (e.g. `useTransition` + `router.push`) so parents can show loading UI. */
+  onWindowChange?: (w: PatternWindow) => void;
+  /** Disables range controls while a client navigation is in flight. */
+  navigationPending?: boolean;
 }) {
   const href = (w: PatternWindow) =>
     `/patterns?window=${w}&timeZone=${encodeURIComponent(timeZone)}`;
@@ -40,14 +46,39 @@ export function PatternRangeFilters({
     persistWindow(active);
   }, [active]);
 
+  const tabClass = (selected: boolean) =>
+    selected
+      ? "rounded-full bg-align-forest px-4 py-2 text-sm font-medium text-white shadow-sm shadow-black/10"
+      : "rounded-full border border-align-border/90 bg-white/90 px-4 py-2 text-sm font-medium text-zinc-700 ring-1 ring-black/[0.03] transition hover:bg-align-subtle";
+
   return (
     <div
       className="flex flex-wrap gap-2"
       role="tablist"
       aria-label="Insights date range"
+      aria-busy={navigationPending}
     >
       {WINDOWS.map(({ id, label }) => {
         const selected = id === active;
+        if (onWindowChange) {
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              tabIndex={selected ? 0 : -1}
+              disabled={navigationPending}
+              onClick={() => {
+                persistWindow(id);
+                onWindowChange(id);
+              }}
+              className={`${tabClass(selected)} ${navigationPending ? "cursor-wait opacity-80" : ""}`}
+            >
+              {label}
+            </button>
+          );
+        }
         return (
           <Link
             key={id}
@@ -56,11 +87,7 @@ export function PatternRangeFilters({
             tabIndex={selected ? 0 : -1}
             href={href(id)}
             onClick={() => persistWindow(id)}
-            className={
-              selected
-                ? "rounded-full bg-align-forest px-4 py-2 text-sm font-medium text-white shadow-sm shadow-black/10"
-                : "rounded-full border border-align-border/90 bg-white/90 px-4 py-2 text-sm font-medium text-zinc-700 ring-1 ring-black/[0.03] transition hover:bg-align-subtle"
-            }
+            className={tabClass(selected)}
           >
             {label}
           </Link>

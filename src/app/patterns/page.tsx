@@ -5,16 +5,17 @@ import { Suspense } from "react";
 import { PatternSummariesSection } from "@/app/patterns/pattern-summaries-section";
 import { PatternsInclusionLine } from "@/app/patterns/patterns-inclusion-line";
 import { PatternsTakeawaysSection } from "@/app/patterns/patterns-takeaways-section";
-import { PatternRangeFilters } from "@/components/pattern-range-filters";
+import { PatternsInsightsShell } from "@/components/patterns-insights-shell";
 import { PatternsTimezoneSync } from "@/components/patterns-timezone-sync";
 import {
   PatternInclusionLineSkeleton,
   PatternWindowSummaryCardsSkeleton,
   PatternsTakeawaysSectionSkeleton,
 } from "@/components/skeleton";
+import { needsOnboarding } from "@/lib/onboarding";
 import { safeTimeZoneForPatterns } from "@/lib/patterns/safe-timezone";
 import { parsePatternWindow } from "@/lib/patterns/window";
-import { needsOnboarding } from "@/lib/onboarding";
+import { getUserPreferences } from "@/lib/user-display-preferences";
 
 function readParam(
   params: Record<string, string | string[] | undefined>,
@@ -37,8 +38,14 @@ export default async function PatternsPage({
   const windowParam = readParam(params, "window");
   const window = parsePatternWindow(windowParam ?? undefined);
   const rawTz = readParam(params, "timeZone");
-  const needsTzSync = rawTz == null || rawTz === "";
-  const timeZone = safeTimeZoneForPatterns(rawTz ?? undefined);
+  const prefs = userId ? await getUserPreferences(userId) : null;
+  const savedTz = prefs?.ianaTimeZone?.trim();
+  const needsTzSync = Boolean(userId && !rawTz?.trim() && !savedTz);
+  const timeZone = rawTz?.trim()
+    ? safeTimeZoneForPatterns(rawTz)
+    : savedTz
+      ? safeTimeZoneForPatterns(savedTz)
+      : safeTimeZoneForPatterns(undefined);
 
   const atIso = new Date().toISOString();
 
@@ -65,9 +72,10 @@ export default async function PatternsPage({
       ) : null}
 
       {userId && !needsTzSync ? (
-        <>
-          <div className="space-y-3">
-            <PatternRangeFilters active={window} timeZone={timeZone} />
+        <PatternsInsightsShell
+          activeWindow={window}
+          timeZone={timeZone}
+          inclusion={
             <Suspense fallback={<PatternInclusionLineSkeleton />}>
               <PatternsInclusionLine
                 userId={userId}
@@ -76,21 +84,23 @@ export default async function PatternsPage({
                 atIso={atIso}
               />
             </Suspense>
-          </div>
-
-          <Suspense fallback={<PatternWindowSummaryCardsSkeleton />}>
-            <PatternSummariesSection userId={userId} window={window} atIso={atIso} />
-          </Suspense>
-
-          <Suspense fallback={<PatternsTakeawaysSectionSkeleton />}>
-            <PatternsTakeawaysSection
-              userId={userId}
-              window={window}
-              timeZone={timeZone}
-              atIso={atIso}
-            />
-          </Suspense>
-        </>
+          }
+          summaries={
+            <Suspense fallback={<PatternWindowSummaryCardsSkeleton />}>
+              <PatternSummariesSection userId={userId} window={window} atIso={atIso} />
+            </Suspense>
+          }
+          takeaways={
+            <Suspense fallback={<PatternsTakeawaysSectionSkeleton />}>
+              <PatternsTakeawaysSection
+                userId={userId}
+                window={window}
+                timeZone={timeZone}
+                atIso={atIso}
+              />
+            </Suspense>
+          }
+        />
       ) : null}
     </main>
   );

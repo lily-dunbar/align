@@ -5,6 +5,7 @@ import { DEMO_DAY_INSIGHTS } from "@/lib/demo/demo-day-insights";
 import { isDemoDataActive } from "@/lib/demo/is-demo-data-active";
 import { buildDailySparkInsight } from "@/lib/day-insight-daily-spark";
 import { loadDayInsightSnapshot } from "@/lib/day-insight-context";
+import { digestDayInsightSnapshot } from "@/lib/day-insight-digest";
 import { fetchDayInsightsWithClaude } from "@/lib/day-insights-llm";
 
 export async function GET(request: NextRequest) {
@@ -22,7 +23,21 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const sinceDigest = url.searchParams.get("sinceDigest")?.trim() ?? "";
+
     const snapshot = await loadDayInsightSnapshot(userId, date, timeZone);
+    const digest = digestDayInsightSnapshot(snapshot);
+
+    if (sinceDigest && sinceDigest === digest) {
+      return NextResponse.json({
+        ok: true,
+        unchanged: true as const,
+        digest,
+        date,
+        timeZone,
+      });
+    }
+
     const spark = buildDailySparkInsight({ ...snapshot, dateYmd: date });
 
     if (await isDemoDataActive(userId)) {
@@ -33,6 +48,7 @@ export async function GET(request: NextRequest) {
         generatedAt: new Date().toISOString(),
         date,
         timeZone,
+        digest,
       });
     }
 
@@ -47,6 +63,7 @@ export async function GET(request: NextRequest) {
         generatedAt: new Date().toISOString(),
         date,
         timeZone,
+        digest,
       });
     }
 
@@ -59,6 +76,7 @@ export async function GET(request: NextRequest) {
         generatedAt: new Date().toISOString(),
         date,
         timeZone,
+        digest,
       });
     }
 
@@ -71,6 +89,7 @@ export async function GET(request: NextRequest) {
       generatedAt: new Date().toISOString(),
       date,
       timeZone,
+      digest,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to load day insights";

@@ -1,0 +1,1 @@
+ALTER TABLE "user_display_preferences" ADD COLUMN "iana_time_zone" text;

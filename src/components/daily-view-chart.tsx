@@ -1,10 +1,12 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { addDays } from "date-fns";
 import { formatInTimeZone, toDate } from "date-fns-tz";
 
 import { DailyViewChartSkeleton } from "@/components/skeleton";
+import { useEffectiveTimeZone } from "@/hooks/use-effective-timezone";
 import { DAY_DATA_CHANGED_EVENT } from "@/lib/day-view-events";
 import { getLocalCalendarYmd } from "@/lib/local-calendar-ymd";
 import { useResolvedDayYmd } from "@/lib/use-resolved-day-ymd";
@@ -270,6 +272,19 @@ function sleepReferenceIntervalsForViewedDay(
   return [{ x1: lo, x2: hi }];
 }
 
+/** Clip local clock-hour spans (activity bands) so ReferenceAreas cannot widen Recharts domain. */
+function clipHourSegmentToTimeline(
+  x1: number,
+  x2: number,
+  xDomain: [number, number],
+): { x1: number; x2: number } | null {
+  const [dmin, dmax] = xDomain;
+  const lo = Math.max(x1, dmin);
+  const hi = Math.min(x2, dmax);
+  if (lo >= hi - 1e-6) return null;
+  return { x1: lo, x2: hi };
+}
+
 /** End time for chart span; falls back to duration or a short default so the band is visible. */
 function stravaActivityEndIso(a: {
   startAt: string;
@@ -319,6 +334,173 @@ function stravaActivityEmoji(sportType?: string | null, activityType?: string | 
   return "🏃";
 }
 
+/** Recharts cartesian label viewBox (ReferenceLine provides width on the vertical segment). */
+type GlyphViewBox = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  upperWidth?: number;
+  lowerWidth?: number;
+};
+
+function trapezoidFromViewBox(box: GlyphViewBox) {
+  return {
+    x: box.x,
+    y: box.y,
+    upperWidth: box.upperWidth ?? box.width,
+    height: box.height,
+  };
+}
+
+/** Match Recharts `position="top"` for cartesian labels (see getCartesianPosition). */
+function labelXYTop(viewBox: GlyphViewBox | undefined, offset: number): { x: number; y: number } | null {
+  if (!viewBox) return null;
+  const { x, y, upperWidth, height } = trapezoidFromViewBox(viewBox);
+  const verticalSign = height >= 0 ? 1 : -1;
+  const verticalOffset = verticalSign * offset;
+  return { x: x + upperWidth / 2, y: y - verticalOffset };
+}
+
+function TimelineGlyphLabel({
+  viewBox,
+  offset = 10,
+  tooltip,
+  fontSize,
+  fill = "#333",
+  children,
+}: {
+  viewBox?: GlyphViewBox;
+  offset?: number;
+  tooltip: string;
+  fontSize: number;
+  fill?: string;
+  children: ReactNode;
+}) {
+  const pos = labelXYTop(viewBox, offset);
+  if (!pos) return null;
+  const hit = Math.max(28, fontSize * 1.35);
+  return (
+    <g className="pointer-events-auto" style={{ cursor: "default" }}>
+      <title>{tooltip}</title>
+      <rect
+        x={pos.x - hit / 2}
+        y={pos.y - hit * 0.72}
+        width={hit}
+        height={hit}
+        fill="transparent"
+      />
+      <text
+        x={pos.x}
+        y={pos.y}
+        fill={fill}
+        fontSize={fontSize}
+        textAnchor="middle"
+        dominantBaseline="auto"
+      >
+        {children}
+      </text>
+    </g>
+  );
+}
+
+function chartIconLabel(
+  tooltip: string,
+  emoji: string,
+  options?: { fontSize?: number; fill?: string; offset?: number },
+) {
+  const fontSize = options?.fontSize ?? 24;
+  const fill = options?.fill;
+  const offset = options?.offset ?? 10;
+  return {
+    position: "top" as const,
+    offset,
+    // Recharts passes full Label props; we only need cartesian viewBox + offset.
+    content: (props: { viewBox?: unknown; offset?: number }) => (
+      <TimelineGlyphLabel
+        viewBox={props.viewBox as GlyphViewBox | undefined}
+        offset={props.offset ?? offset}
+        tooltip={tooltip}
+        fontSize={fontSize}
+        fill={fill}
+      >
+        {emoji}
+      </TimelineGlyphLabel>
+    ),
+  };
+}
+
+function formatShortClock(iso: string, timeZone: string): string {
+  try {
+    return formatInTimeZone(new Date(iso), timeZone, "h:mm a");
+  } catch {
+    return "";
+  }
+}
+
+function formatElapsedSeconds(totalSec: number): string {
+  const s = Math.max(0, Math.round(totalSec));
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return rm > 0 ? `${h}h ${rm}m` : `${h}h`;
+}
+
+function manualWorkoutTooltip(
+  w: DayApiResponse["streams"]["manualWorkouts"][number],
+  timeZone: string,
+): string {
+  const type = (w.workoutType?.trim() || "Workout").replace(/\s+/g, " ");
+  const start = formatShortClock(w.startedAt, timeZone);
+  if (!w.endedAt) {
+    return `${type} · ${start} · in progress`;
+  }
+  const end = formatShortClock(w.endedAt, timeZone);
+  const durSec = (new Date(w.endedAt).getTime() - new Date(w.startedAt).getTime()) / 1000;
+  const dur =
+    Number.isFinite(durSec) && durSec > 0 ? ` · ${formatElapsedSeconds(durSec)}` : "";
+  return `${type} · ${start}–${end}${dur}`;
+}
+
+function stravaActivityTooltipDetail(
+  a: NonNullable<DayApiResponse["streams"]["stravaActivities"]>[number],
+  timeZone: string,
+): string {
+  const raw = `${a.sportType ?? ""} ${a.activityType ?? ""}`.trim();
+  const type = raw.replace(/\s+/g, " ") || "Activity";
+  const start = formatShortClock(a.startAt, timeZone);
+  const endIso = stravaActivityEndIso(a);
+  const end = formatShortClock(endIso, timeZone);
+  let line = `${type} · ${start}–${end}`;
+  if (a.durationSec != null && a.durationSec > 0) {
+    line += ` · ${formatElapsedSeconds(a.durationSec)}`;
+  }
+  return line;
+}
+
+function sleepWindowTooltip(sleepStart: string, sleepEnd: string, timeZone: string): string {
+  const s = formatShortClock(sleepStart, timeZone);
+  const e = formatShortClock(sleepEnd, timeZone);
+  const durSec =
+    (new Date(sleepEnd).getTime() - new Date(sleepStart).getTime()) / 1000;
+  const dur =
+    Number.isFinite(durSec) && durSec > 60 ? ` · ${formatElapsedSeconds(durSec)}` : "";
+  return `Sleep · ${s}–${e}${dur}`;
+}
+
+function foodEntryTooltip(
+  f: DayApiResponse["streams"]["foodEntries"][number],
+  timeZone: string,
+): string {
+  const title = (f.title.trim() || "Food").replace(/\s+/g, " ");
+  const when = formatShortClock(f.eatenAt, timeZone);
+  const hrs = foodAbsorptionDurationHours(f.title);
+  const windowLabel = hrs === 1 ? "~1h" : `~${hrs}h`;
+  return `${title} · ${when} · ${windowLabel} absorption window (modeled)`;
+}
+
 function hourLabel(v: number) {
   const totalMinutes = Math.round(v * 60);
   const hour24 = ((Math.floor(totalMinutes / 60) % 24) + 24) % 24;
@@ -351,6 +533,7 @@ type Props = {
 
 export function DailyViewChart({ dateYmd }: Props) {
   const resolvedDateYmd = useResolvedDayYmd(dateYmd);
+  const effectiveTz = useEffectiveTimeZone();
   const [payload, setPayload] = useState<DayApiResponse | null>(null);
   const [prefs, setPrefs] = useState<ChartDisplayPreferences | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -360,7 +543,7 @@ export function DailyViewChart({ dateYmd }: Props) {
   const loadDayData = useCallback(async () => {
     setError(null);
     try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
+      const tz = effectiveTz;
       const resp = await fetch(
         `/api/day?date=${encodeURIComponent(resolvedDateYmd)}&timeZone=${encodeURIComponent(tz)}`,
         {
@@ -373,7 +556,7 @@ export function DailyViewChart({ dateYmd }: Props) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     }
-  }, [resolvedDateYmd]);
+  }, [resolvedDateYmd, effectiveTz]);
 
   useEffect(() => {
     const id = requestAnimationFrame(() => {
@@ -499,29 +682,31 @@ export function DailyViewChart({ dateYmd }: Props) {
     <section className="w-full min-w-0 rounded-2xl border border-align-border/90 bg-white/90 p-5 text-left ring-1 ring-black/[0.03] backdrop-blur-[2px] md:p-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-base font-semibold tracking-tight text-foreground md:text-lg">Daily View</h2>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="mr-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-align-muted">
+        <div className="flex min-w-0 w-full items-center gap-2 sm:w-auto">
+          <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.12em] text-align-muted">
             Timeline
           </span>
-          {(
-            [
-              { id: "24h" as const, label: "24h" },
-              { id: "12h" as const, label: "12h" },
-            ] as const
-          ).map(({ id, label }) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setTimelineWindow(id)}
-              className={
-                timelineWindow === id
-                  ? "rounded-full bg-align-forest px-3 py-1.5 text-[11px] font-medium text-white shadow-sm shadow-black/10"
-                  : "rounded-full bg-align-subtle px-3 py-1.5 text-[11px] font-medium text-zinc-600 ring-1 ring-black/[0.04] hover:bg-white"
-              }
-            >
-              {label}
-            </button>
-          ))}
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:flex-initial">
+            {(
+              [
+                { id: "24h" as const, label: "24h" },
+                { id: "12h" as const, label: "12h" },
+              ] as const
+            ).map(({ id, label }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTimelineWindow(id)}
+                className={
+                  timelineWindow === id
+                    ? "min-h-9 flex-1 rounded-full bg-align-forest px-3 py-1.5 text-center text-[11px] font-medium text-white shadow-sm shadow-black/10 sm:flex-none sm:min-h-0"
+                    : "min-h-9 flex-1 rounded-full bg-align-subtle px-3 py-1.5 text-center text-[11px] font-medium text-zinc-600 ring-1 ring-black/[0.04] hover:bg-white sm:flex-none sm:min-h-0"
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       <p className="mt-1.5 text-xs text-align-muted">
@@ -570,11 +755,7 @@ export function DailyViewChart({ dateYmd }: Props) {
                       stroke="transparent"
                       strokeWidth={0}
                       zIndex={35}
-                      label={{
-                        value: "😴",
-                        position: "top",
-                        fontSize: 24,
-                      }}
+                      label={chartIconLabel(sleepWindowTooltip(s.sleepStart, s.sleepEnd, tz), "😴")}
                     />
                   ));
                   return [...areas, ...icons];
@@ -582,7 +763,10 @@ export function DailyViewChart({ dateYmd }: Props) {
               : null}
             {showActivity
               ? payload.streams.manualWorkouts.flatMap((w) => {
-                  const { x1, x2 } = activityBandXRange(w.startedAt, w.endedAt, tz);
+                  const raw = activityBandXRange(w.startedAt, w.endedAt, tz);
+                  const clipped = clipHourSegmentToTimeline(raw.x1, raw.x2, xDomain);
+                  if (!clipped) return [];
+                  const { x1, x2 } = clipped;
                   const iconX = (x1 + x2) / 2;
                   return [
                       <ReferenceArea
@@ -593,7 +777,7 @@ export function DailyViewChart({ dateYmd }: Props) {
                         y2={300}
                         fill="#f9a8a4"
                         fillOpacity={0.16}
-                        ifOverflow="extendDomain"
+                        ifOverflow="hidden"
                       />,
                       <ReferenceLine
                         key={`workout-icon-${w.id}`}
@@ -601,18 +785,20 @@ export function DailyViewChart({ dateYmd }: Props) {
                         stroke="transparent"
                         strokeWidth={0}
                         zIndex={35}
-                        label={{
-                          value: manualWorkoutEmoji(w.workoutType),
-                          position: "top",
-                          fontSize: 24,
-                        }}
+                        label={chartIconLabel(
+                          manualWorkoutTooltip(w, tz),
+                          manualWorkoutEmoji(w.workoutType),
+                        )}
                       />
                     ];
                 })
               : null}
             {showActivity
               ? (payload.streams.stravaActivities ?? []).flatMap((a) => {
-                  const { x1, x2 } = activityBandXRange(a.startAt, stravaActivityEndIso(a), tz);
+                  const raw = activityBandXRange(a.startAt, stravaActivityEndIso(a), tz);
+                  const clipped = clipHourSegmentToTimeline(raw.x1, raw.x2, xDomain);
+                  if (!clipped) return [];
+                  const { x1, x2 } = clipped;
                   const iconX = (x1 + x2) / 2;
                   return [
                       <ReferenceArea
@@ -623,7 +809,7 @@ export function DailyViewChart({ dateYmd }: Props) {
                         y2={300}
                         fill="#f9a8a4"
                         fillOpacity={0.16}
-                        ifOverflow="extendDomain"
+                        ifOverflow="hidden"
                       />,
                       <ReferenceLine
                         key={`strava-icon-${a.id}`}
@@ -631,11 +817,10 @@ export function DailyViewChart({ dateYmd }: Props) {
                         stroke="transparent"
                         strokeWidth={0}
                         zIndex={35}
-                        label={{
-                          value: stravaActivityEmoji(a.sportType, a.activityType),
-                          position: "top",
-                          fontSize: 24,
-                        }}
+                        label={chartIconLabel(
+                          stravaActivityTooltipDetail(a, tz),
+                          stravaActivityEmoji(a.sportType, a.activityType),
+                        )}
                       />
                     ];
                 })
@@ -668,12 +853,9 @@ export function DailyViewChart({ dateYmd }: Props) {
                         stroke="transparent"
                         strokeWidth={0}
                         zIndex={40}
-                        label={{
-                          value: "🍽",
-                          position: "top",
+                        label={chartIconLabel(foodEntryTooltip(f, tz), "🍽", {
                           fill: "#166534",
-                          fontSize: 24,
-                        }}
+                        })}
                       />
                     ) : null;
                   return [...areas, icon].filter((n) => n != null);
@@ -690,6 +872,10 @@ export function DailyViewChart({ dateYmd }: Props) {
               ticks={xTicks}
               tickFormatter={hourLabel}
               tick={{ fontSize: 11 }}
+              allowDataOverflow
+              {...(timelineWindow === "12h"
+                ? { niceTicks: "none" as const, padding: { left: 0, right: 0 } }
+                : {})}
             />
             <YAxis
               type="number"

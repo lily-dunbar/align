@@ -6,6 +6,18 @@ import { ToggleSwitch } from "@/components/toggle-switch";
 import { Skeleton } from "@/components/skeleton";
 import type { DisplayPreferences, UserPreferences } from "@/lib/user-display-preferences";
 
+function sortedIanaTimeZones(): string[] {
+  try {
+    const intl = Intl as typeof Intl & { supportedValuesOf?: (key: string) => string[] };
+    if (typeof intl.supportedValuesOf === "function") {
+      return intl.supportedValuesOf("timeZone").slice().sort((a, b) => a.localeCompare(b));
+    }
+  } catch {
+    /* ignore */
+  }
+  return [];
+}
+
 const TIMELINE_ROWS: {
   key: keyof DisplayPreferences;
   title: string;
@@ -38,6 +50,10 @@ export function DisplayPreferencesCard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [browserTz] = useState(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC",
+  );
+  const [ianaZones] = useState(sortedIanaTimeZones);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,6 +79,36 @@ export function DisplayPreferencesCard() {
       cancelled = true;
     };
   }, []);
+
+  async function onTimeZoneChange(nextValue: string) {
+    if (!prefs) return;
+    const previous = prefs;
+    const ianaTimeZone = nextValue === "__auto__" ? null : nextValue;
+    const next = { ...prefs, ianaTimeZone };
+    setPrefs(next);
+    setSaving(true);
+    setError(null);
+    try {
+      const resp = await fetch("/api/settings/preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ianaTimeZone }),
+      });
+      const json = (await resp.json()) as {
+        preferences?: UserPreferences;
+        error?: string;
+      };
+      if (!resp.ok || !json.preferences) {
+        throw new Error(json.error ?? "Failed to save time zone");
+      }
+      setPrefs(json.preferences);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save");
+      setPrefs(previous);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function onToggle(key: keyof DisplayPreferences) {
     if (!prefs) return;
@@ -104,6 +150,11 @@ export function DisplayPreferencesCard() {
             aria-busy="true"
             aria-label="Loading display preferences"
           >
+            <li className="px-4 py-3.5 first:rounded-t-xl">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="mt-2 h-3 w-full max-w-md" />
+              <Skeleton className="mt-3 h-10 w-full rounded-lg" />
+            </li>
             {[0, 1, 2, 3].map((i) => (
               <li key={i} className="flex items-center justify-between gap-4 px-4 py-3.5">
                 <div className="min-w-0 flex-1 space-y-2">
@@ -119,6 +170,29 @@ export function DisplayPreferencesCard() {
 
         {prefs ? (
           <ul className="mt-4 divide-y divide-zinc-100 rounded-xl border border-zinc-100 bg-zinc-50/50">
+            <li className="flex flex-col gap-1 px-4 py-3.5 first:rounded-t-xl">
+              <label htmlFor="iana-time-zone" className="font-medium text-zinc-900">
+                Time zone
+              </label>
+              <p className="text-xs text-zinc-500">
+                Daily view and Insights use this for calendar-day boundaries. Automatic follows this
+                device ({browserTz}).
+              </p>
+              <select
+                id="iana-time-zone"
+                disabled={saving}
+                value={prefs.ianaTimeZone ?? "__auto__"}
+                onChange={(e) => void onTimeZoneChange(e.target.value)}
+                className="mt-2 w-full rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm outline-none ring-align-forest/20 focus:ring-2 disabled:opacity-60"
+              >
+                <option value="__auto__">Automatic ({browserTz})</option>
+                {ianaZones.map((z) => (
+                  <option key={z} value={z}>
+                    {z}
+                  </option>
+                ))}
+              </select>
+            </li>
             {TIMELINE_ROWS.map(({ key, title, description }) => (
               <li
                 key={key}

@@ -7,6 +7,8 @@ import { DAY_DATA_CHANGED_EVENT } from "@/lib/day-view-events";
 import type { UserPreferences } from "@/lib/user-display-preferences";
 
 type Props = {
+  /** When true, only the demo-mode switch is shown (no reset tools). For allowlisted production users. */
+  demoOnly?: boolean;
   initialDeveloperDemoMode: boolean;
   initialOnboardingCompleted: boolean;
 };
@@ -18,6 +20,7 @@ function emitDayDataChanged() {
 }
 
 export function SettingsDeveloperCard({
+  demoOnly = false,
   initialDeveloperDemoMode,
   initialOnboardingCompleted,
 }: Props) {
@@ -105,11 +108,22 @@ export function SettingsDeveloperCard({
 
   return (
     <section className="w-full rounded-2xl border border-align-border/80 bg-align-subtle/50 p-5 text-left ring-1 ring-black/[0.03]">
-      <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Developer</h2>
+      <h2 className="text-lg font-semibold tracking-tight text-zinc-900">
+        {demoOnly ? "Demo preview" : "Developer"}
+      </h2>
       <p className="mt-1 text-sm text-zinc-600">
-        Tools for demos and local testing. In production, enable{" "}
-        <code className="rounded bg-zinc-200/80 px-1 font-mono text-xs">ENABLE_DEVELOPER_SETTINGS</code>
-        .
+        {demoOnly ? (
+          <>
+            Show sample CGM, steps, activity, patterns, and day insights — useful for walkthroughs. Your integrations
+            and saved data stay on; turn this off to see your live data again.
+          </>
+        ) : (
+          <>
+            Tools for demos and local testing. In production, enable{" "}
+            <code className="rounded bg-zinc-200/80 px-1 font-mono text-xs">ENABLE_DEVELOPER_SETTINGS</code>
+            .
+          </>
+        )}
       </p>
 
       <div className="mt-4 space-y-4 border-t border-zinc-200 pt-4">
@@ -117,8 +131,14 @@ export function SettingsDeveloperCard({
           <div>
             <p className="text-sm font-medium text-zinc-900">Demo mode</p>
             <p className="mt-0.5 text-xs text-zinc-500">
-              Banner plus synthetic daily chart, patterns, and day insights (also when{" "}
-              <code className="font-mono">DEMO_MODE</code> is set in env).
+              Banner plus synthetic daily chart, patterns, and day insights{" "}
+              {!demoOnly ? (
+                <>
+                  (also when <code className="font-mono">DEMO_MODE</code> is set in env).
+                </>
+              ) : (
+                "(site-wide demo env can also turn this on if configured)."
+              )}
             </p>
           </div>
           <button
@@ -140,42 +160,46 @@ export function SettingsDeveloperCard({
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium text-zinc-900">Reset manual entries</p>
-            <p className="mt-0.5 text-xs text-zinc-500">
-              Workouts, food, and sleep you added (keeps demo-seeded food/sleep).
-            </p>
-          </div>
-          <button
-            type="button"
-            className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-800 shadow-sm hover:bg-red-50 disabled:opacity-50"
-            disabled={busy !== null}
-            onClick={() => void resetManual()}
-          >
-            {busy === "manual" ? "Working…" : "Reset manual"}
-          </button>
-        </div>
+        {demoOnly ? null : (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-zinc-900">Reset manual entries</p>
+                <p className="mt-0.5 text-xs text-zinc-500">
+                  Workouts, food, and sleep you added (keeps demo-seeded food/sleep).
+                </p>
+              </div>
+              <button
+                type="button"
+                className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-800 shadow-sm hover:bg-red-50 disabled:opacity-50"
+                disabled={busy !== null}
+                onClick={() => void resetManual()}
+              >
+                {busy === "manual" ? "Working…" : "Reset manual"}
+              </button>
+            </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium text-zinc-900">Reset onboarding</p>
-            <p className="mt-0.5 text-xs text-zinc-500">
-              Sets onboarding to incomplete for future first-run flows.
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-zinc-500">{onboardingDone ? "Done" : "Pending"}</span>
-            <button
-              type="button"
-              className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-100 disabled:opacity-50"
-              disabled={busy !== null}
-              onClick={() => void resetOnboarding()}
-            >
-              {busy === "onboard" ? "Working…" : "Reset onboarding"}
-            </button>
-          </div>
-        </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-zinc-900">Reset onboarding</p>
+                <p className="mt-0.5 text-xs text-zinc-500">
+                  Sets onboarding to incomplete for future first-run flows.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-500">{onboardingDone ? "Done" : "Pending"}</span>
+                <button
+                  type="button"
+                  className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-100 disabled:opacity-50"
+                  disabled={busy !== null}
+                  onClick={() => void resetOnboarding()}
+                >
+                  {busy === "onboard" ? "Working…" : "Reset onboarding"}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {error ? (

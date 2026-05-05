@@ -3,10 +3,14 @@ import { NextResponse } from "next/server";
 
 import {
   getUserPreferences,
+  parseOptionalIanaTimeZone,
   updateUserPreferences,
   type UserPreferences,
 } from "@/lib/user-display-preferences";
-import { isDeveloperSettingsEnabled } from "@/lib/developer-settings";
+import {
+  canUserPatchDeveloperDemoMode,
+  isDeveloperSettingsEnabled,
+} from "@/lib/developer-settings";
 
 export async function GET() {
   const { userId } = await auth();
@@ -25,8 +29,8 @@ export async function PATCH(request: Request) {
   const patch: PatchBody = {};
 
   const dev = isDeveloperSettingsEnabled();
-  if (body.developerDemoMode !== undefined && !dev) {
-    return NextResponse.json({ error: "Developer settings are disabled" }, { status: 403 });
+  if (body.developerDemoMode !== undefined && !canUserPatchDeveloperDemoMode(userId)) {
+    return NextResponse.json({ error: "Demo mode cannot be changed for this account" }, { status: 403 });
   }
   /** Completing onboarding (`true`) is always allowed; clearing (`false`) is developer-only or via reset route. */
   if (body.onboardingCompleted === false && !dev) {
@@ -37,6 +41,14 @@ export async function PATCH(request: Request) {
   if (typeof body.showActivity === "boolean") patch.showActivity = body.showActivity;
   if (typeof body.showSleep === "boolean") patch.showSleep = body.showSleep;
   if (typeof body.showFood === "boolean") patch.showFood = body.showFood;
+  if (body.ianaTimeZone !== undefined) {
+    try {
+      patch.ianaTimeZone = parseOptionalIanaTimeZone(body.ianaTimeZone);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Invalid time zone";
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+  }
   if (typeof body.patternThresholdPercent === "number") {
     patch.patternThresholdPercent = body.patternThresholdPercent;
   }

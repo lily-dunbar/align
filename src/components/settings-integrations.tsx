@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const SETTINGS_RETURN = encodeURIComponent("/settings");
 
@@ -34,10 +34,41 @@ export type IntegrationSnapshot = {
   };
 };
 
+type StepsIngestInfo = {
+  ingestUrl: string;
+  notes: string[];
+};
+
 export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [stepsIngest, setStepsIngest] = useState<StepsIngestInfo | null>(null);
+  const [copyFlash, setCopyFlash] = useState(false);
+
+  const loadStepsIngestInfo = useCallback(async () => {
+    if (!initial.steps.connected) {
+      setStepsIngest(null);
+      return;
+    }
+    try {
+      const resp = await fetch("/api/ingest/steps/token", {
+        method: "GET",
+        credentials: "include",
+      });
+      const json = (await resp.json()) as StepsIngestInfo & { error?: string };
+      if (!resp.ok) throw new Error(json.error ?? "Could not load ingest URL");
+      setStepsIngest({ ingestUrl: json.ingestUrl, notes: json.notes ?? [] });
+    } catch {
+      setStepsIngest(null);
+    }
+  }, [initial.steps.connected]);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      void loadStepsIngestInfo();
+    });
+  }, [loadStepsIngestInfo]);
 
   async function disconnect(kind: "dexcom" | "strava" | "steps") {
     if (kind === "dexcom" && initial.dexcom.shareCredentialsMode) {
@@ -115,10 +146,10 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
         credentials: "include",
       });
       const text = await resp.text();
-      let json: { error?: string } = {};
+      let json: StepsIngestInfo & { error?: string } = { ingestUrl: "", notes: [] };
       if (text) {
         try {
-          json = JSON.parse(text) as { error?: string };
+          json = JSON.parse(text) as StepsIngestInfo & { error?: string };
         } catch {
           throw new Error(
             `Connect failed (HTTP ${resp.status}). If you are signed in, try refreshing the page.`,
@@ -128,8 +159,9 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
       if (!resp.ok) {
         throw new Error(json.error ?? `Could not create ingest token (HTTP ${resp.status})`);
       }
+      setStepsIngest({ ingestUrl: json.ingestUrl, notes: json.notes ?? [] });
       setNotice(
-        "Shortcut ingest URL is ready. You can pull from your Mac’s iCloud file anytime with Pull file.",
+        "Your personal Shortcut URL is below — use it with an HTTP POST from Shortcuts (hosted Vercel cannot read files from your Mac or iCloud).",
       );
       router.refresh();
     } catch (e) {
@@ -411,31 +443,76 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
               <p className="mt-1 text-xs text-zinc-500">
                 {initial.steps.connected ? (
                   <>
-                    Shortcut POST URL active · Pull file uses the local path in{" "}
-                    <code className="rounded bg-zinc-100 px-1 text-[10px]">.env.local</code> (not
-                    Apple’s API). DB: {initial.steps.stepsTotalStored.toLocaleString()} step-count
-                    sum · Last ingest: {formatWhen(initial.steps.lastIngestAt)}
+                    Personal Shortcut POST URL is active — each user has a different path after{" "}
+                    <code className="rounded bg-zinc-100 px-1 text-[10px]">/api/ingest/steps/</code>.
+                    DB: {initial.steps.stepsTotalStored.toLocaleString()} step-count sum · Last ingest:{" "}
+                    {formatWhen(initial.steps.lastIngestAt)}
                   </>
                 ) : (
                   <>
+                    <span className="font-medium text-zinc-700">Hosted (e.g. Vercel):</span> use Apple
+                    Shortcuts to POST step data to your personal URL after you connect — the server
+                    cannot read <code className="rounded bg-zinc-100 px-1 text-[10px]">Timestamp, Steps.txt</code>{" "}
+                    from iCloud. <span className="font-medium text-zinc-700">Local dev only:</span>{" "}
                     Pull file reads{" "}
-                    <code className="rounded bg-zinc-100 px-1 text-[10px]">
-                      ICLOUD_STEPS_JSON_PATH
-                    </code>{" "}
-                    /{" "}
-                    <code className="rounded bg-zinc-100 px-1 text-[10px]">
-                      SHORTCUTS_STEPS_FILE_PATH
-                    </code>{" "}
-                    on the Mac running this app — the file must exist locally (iCloud Drive syncs it
-                    here; the app does not call Apple’s servers). Connect adds an optional HTTP URL
-                    for Shortcuts automation.
+                    <code className="rounded bg-zinc-100 px-1 text-[10px]">ICLOUD_STEPS_JSON_PATH</code> /{" "}
+                    <code className="rounded bg-zinc-100 px-1 text-[10px]">SHORTCUTS_STEPS_FILE_PATH</code> on
+                    the machine running this app.
                   </>
                 )}
               </p>
+              {initial.steps.connected && stepsIngest ? (
+                <div className="mt-3 space-y-2 rounded-lg border border-emerald-200/80 bg-white/90 p-3 text-xs text-zinc-700">
+                  <p className="font-semibold text-zinc-900">Shortcuts setup (works for every user)</p>
+                  <p>
+                    Copy <span className="font-medium">your</span> URL — it ties steps to this account only.
+                    Other people sign in, connect here, and put <span className="font-medium">their</span> URL
+                    in their own Shortcut.
+                  </p>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                    <code className="min-w-0 flex-1 break-all rounded-md bg-zinc-100 px-2 py-1.5 text-[11px] leading-snug text-zinc-800">
+                      {stepsIngest.ingestUrl}
+                    </code>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(stepsIngest.ingestUrl).then(() => {
+                          setCopyFlash(true);
+                          window.setTimeout(() => setCopyFlash(false), 2000);
+                        });
+                      }}
+                    >
+                      {copyFlash ? "Copied" : "Copy URL"}
+                    </button>
+                  </div>
+                  <p className="text-zinc-600">
+                    In Shortcuts → <span className="font-medium">Get Contents of URL</span>: method{" "}
+                    <span className="font-medium">POST</span>, add header{" "}
+                    <code className="rounded bg-zinc-100 px-1">X-Shortcut-Secret</code> — value must match
+                    what your Align host set as <code className="rounded bg-zinc-100 px-1">STEPS_INGEST_SECRET</code>{" "}
+                    (or <code className="rounded bg-zinc-100 px-1">AUTH_SECRET</code>). Everyone uses the same
+                    header value; the URL path is what identifies each user.
+                  </p>
+                  <p className="text-zinc-600">
+                    Body: JSON <code className="rounded bg-zinc-100 px-1">{"{ \"timestamp\": \"…ISO…\", \"steps\": 123 }"}</code>{" "}
+                    or <code className="rounded bg-zinc-100 px-1">{"{ \"samples\": […] }"}</code> (see API notes
+                    below).
+                  </p>
+                  {stepsIngest.notes.length > 0 ? (
+                    <ul className="list-inside list-disc space-y-0.5 text-zinc-600">
+                      {stepsIngest.notes.map((n) => (
+                        <li key={n}>{n}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             <div className="flex shrink-0 flex-wrap justify-end gap-2">
               <button
                 type="button"
+                title="Only use when Next.js runs on a Mac (or server) that has your Shortcuts file path in env — not on Vercel."
                 className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-900 transition hover:bg-emerald-100 disabled:opacity-50"
                 disabled={busy !== null}
                 onClick={() => void syncShortcutsIcloudFile()}

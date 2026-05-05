@@ -370,6 +370,8 @@ export const userDisplayPreferences = pgTable("user_display_preferences", {
   developerDemoMode: boolean("developer_demo_mode").notNull().default(false),
   /** First-run / onboarding; new accounts default incomplete until the wizard finishes. */
   onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
+  /** IANA zone (e.g. America/Los_Angeles). Null = use browser zone for day/insights boundaries. */
+  ianaTimeZone: text("iana_time_zone"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

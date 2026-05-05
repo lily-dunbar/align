@@ -7,6 +7,7 @@ import {
   PATTERN_THRESHOLD_MAX,
   PATTERN_THRESHOLD_MIN,
 } from "@/lib/pattern-threshold-constants";
+import { formatYmdInZone } from "@/lib/patterns/format-ymd";
 import {
   GLUCOSE_HIGH_MAX,
   GLUCOSE_HIGH_MIN,
@@ -28,6 +29,8 @@ export type UserPreferences = {
   showActivity: boolean;
   showSleep: boolean;
   showFood: boolean;
+  /** IANA name, or null = use this device’s time zone for calendar days / insights. */
+  ianaTimeZone: string | null;
   patternThresholdPercent: number;
   targetLowMgdl: number;
   targetHighMgdl: number;
@@ -53,6 +56,7 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   showActivity: true,
   showSleep: true,
   showFood: true,
+  ianaTimeZone: null,
   patternThresholdPercent: PATTERN_THRESHOLD_DEFAULT,
   targetLowMgdl: GLUCOSE_TARGET_LOW_DEFAULT,
   targetHighMgdl: GLUCOSE_TARGET_HIGH_DEFAULT,
@@ -98,12 +102,29 @@ export function clampTargetStepsPerDay(value: number): number {
   return Math.min(TARGET_STEPS_MAX, Math.max(TARGET_STEPS_MIN, Math.round(value)));
 }
 
+/** Accepts trimmed IANA id, empty string, or null to clear. */
+export function parseOptionalIanaTimeZone(input: unknown): string | null {
+  if (input === null) return null;
+  if (typeof input !== "string") {
+    throw new Error("Time zone must be a string or null.");
+  }
+  const t = input.trim();
+  if (!t) return null;
+  try {
+    formatYmdInZone(new Date(), t);
+    return t;
+  } catch {
+    throw new Error(`Unknown or invalid IANA time zone: ${t}`);
+  }
+}
+
 function rowToPreferences(row: typeof userDisplayPreferences.$inferSelect): UserPreferences {
   return {
     showSteps: row.showSteps,
     showActivity: row.showActivity,
     showSleep: row.showSleep,
     showFood: row.showFood,
+    ianaTimeZone: row.ianaTimeZone?.trim() ? row.ianaTimeZone.trim() : null,
     patternThresholdPercent: row.patternThresholdPercent,
     targetLowMgdl: row.targetLowMgdl,
     targetHighMgdl: row.targetHighMgdl,
@@ -123,6 +144,10 @@ function mergePreferences(
   if (typeof patch.showActivity === "boolean") next.showActivity = patch.showActivity;
   if (typeof patch.showSleep === "boolean") next.showSleep = patch.showSleep;
   if (typeof patch.showFood === "boolean") next.showFood = patch.showFood;
+  if (patch.ianaTimeZone !== undefined) {
+    next.ianaTimeZone =
+      patch.ianaTimeZone === null ? null : parseOptionalIanaTimeZone(patch.ianaTimeZone);
+  }
   if (typeof patch.patternThresholdPercent === "number") {
     next.patternThresholdPercent = clampPatternThresholdPercent(patch.patternThresholdPercent);
   }
@@ -210,6 +235,7 @@ export async function updateUserPreferences(
       showActivity: merged.showActivity,
       showSleep: merged.showSleep,
       showFood: merged.showFood,
+      ianaTimeZone: merged.ianaTimeZone,
       patternThresholdPercent: merged.patternThresholdPercent,
       targetLowMgdl: merged.targetLowMgdl,
       targetHighMgdl: merged.targetHighMgdl,

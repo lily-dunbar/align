@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { AlignMetricCard } from "@/components/align-metric-card";
 import { DaySummaryCardsSkeleton } from "@/components/skeleton";
+import { useEffectiveTimeZone } from "@/hooks/use-effective-timezone";
 import { DAY_DATA_CHANGED_EVENT } from "@/lib/day-view-events";
 import { useResolvedDayYmd } from "@/lib/use-resolved-day-ymd";
 
@@ -31,6 +32,7 @@ type Props = {
 
 export function DaySummaryCards({ dateYmd }: Props) {
   const resolvedDateYmd = useResolvedDayYmd(dateYmd);
+  const effectiveTz = useEffectiveTimeZone();
   const [data, setData] = useState<DaySummaryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,7 +50,7 @@ export function DaySummaryCards({ dateYmd }: Props) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     }
-  }, [resolvedDateYmd]);
+  }, [resolvedDateYmd, effectiveTz]);
 
   useEffect(() => {
     const id = requestAnimationFrame(() => {

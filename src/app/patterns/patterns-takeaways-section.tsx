@@ -22,7 +22,6 @@ export async function PatternsTakeawaysSection({
           <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
             Insights
           </h2>
-          <p className="mt-1.5 text-sm text-zinc-600">Generated for the range and timezone above.</p>
         </div>
         <PatternsRegenerateButton />
       </div>

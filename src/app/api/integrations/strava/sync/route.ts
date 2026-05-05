@@ -2,10 +2,11 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 import { sanitizeOAuthReturnTo } from "@/lib/oauth-return-to";
+import { getPublicAppBaseUrl } from "@/lib/public-app-base-url";
 import { syncStravaActivities } from "@/lib/strava/client";
 
 function appBaseUrl() {
-  return process.env.AUTH_URL ?? "http://localhost:4000";
+  return getPublicAppBaseUrl();
 }
 
 export async function POST(request: Request) {

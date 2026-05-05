@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { sanitizeOAuthReturnTo } from "@/lib/oauth-return-to";
+import { getPublicAppBaseUrl } from "@/lib/public-app-base-url";
 
 type DexcomStatePayload = {
   nonce: string;
@@ -97,12 +98,5 @@ export function getDexcomRedirectUri() {
   const explicit = process.env.DEXCOM_REDIRECT_URI;
   if (explicit) return explicit;
 
-  const base = process.env.AUTH_URL;
-  if (!base) {
-    throw new Error(
-      "Set AUTH_URL (or DEXCOM_REDIRECT_URI) before using Dexcom OAuth",
-    );
-  }
-
-  return `${base.replace(/\/$/, "")}/api/integrations/dexcom/callback`;
+  return `${getPublicAppBaseUrl()}/api/integrations/dexcom/callback`;
 }

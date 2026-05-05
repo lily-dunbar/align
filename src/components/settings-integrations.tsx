@@ -3,6 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+function readBrowserOrigin(): string {
+  if (typeof window === "undefined") return "";
+  return window.location.origin.replace(/\/$/, "");
+}
+
 const SETTINGS_RETURN = encodeURIComponent("/settings");
 
 function formatWhen(iso: string | null) {
@@ -45,6 +50,34 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
   const [notice, setNotice] = useState<string | null>(null);
   const [stepsIngest, setStepsIngest] = useState<StepsIngestInfo | null>(null);
   const [copyFlash, setCopyFlash] = useState(false);
+  const [stepsClientHints, setStepsClientHints] = useState<{
+    browserOrigin: string | null;
+    ingestOriginMismatch: boolean;
+  }>({ browserOrigin: null, ingestOriginMismatch: false });
+
+  useEffect(() => {
+    const origin = readBrowserOrigin() || null;
+    let ingestOriginMismatch = false;
+    const ingestUrl = stepsIngest?.ingestUrl;
+    if (ingestUrl) {
+      try {
+        const ingest = new URL(ingestUrl);
+        const ingestLocal =
+          ingest.hostname === "localhost" || ingest.hostname === "127.0.0.1";
+        const host = window.location.hostname;
+        const onPublicHttps =
+          window.location.protocol === "https:" &&
+          host !== "localhost" &&
+          host !== "127.0.0.1";
+        ingestOriginMismatch = ingestLocal && onPublicHttps;
+      } catch {
+        ingestOriginMismatch = false;
+      }
+    }
+    // Client-only: window + ingest URL for Shortcuts panel hints (avoids SSR/hydration fights).
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional after mount / when ingest loads
+    setStepsClientHints({ browserOrigin: origin, ingestOriginMismatch });
+  }, [stepsIngest?.ingestUrl]);
 
   const loadStepsIngestInfo = useCallback(async () => {
     if (!initial.steps.connected) {
@@ -438,7 +471,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
         {/* Apple Steps */}
         <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0">
               <p className="font-medium text-zinc-900">Apple Steps</p>
               <p className="mt-1 text-xs text-zinc-500">
                 {initial.steps.connected ? (
@@ -461,53 +494,6 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                   </>
                 )}
               </p>
-              {initial.steps.connected && stepsIngest ? (
-                <div className="mt-3 space-y-2 rounded-lg border border-emerald-200/80 bg-white/90 p-3 text-xs text-zinc-700">
-                  <p className="font-semibold text-zinc-900">Shortcuts setup (works for every user)</p>
-                  <p>
-                    Copy <span className="font-medium">your</span> URL — it ties steps to this account only.
-                    Other people sign in, connect here, and put <span className="font-medium">their</span> URL
-                    in their own Shortcut.
-                  </p>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
-                    <code className="min-w-0 flex-1 break-all rounded-md bg-zinc-100 px-2 py-1.5 text-[11px] leading-snug text-zinc-800">
-                      {stepsIngest.ingestUrl}
-                    </code>
-                    <button
-                      type="button"
-                      className="shrink-0 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
-                      onClick={() => {
-                        void navigator.clipboard.writeText(stepsIngest.ingestUrl).then(() => {
-                          setCopyFlash(true);
-                          window.setTimeout(() => setCopyFlash(false), 2000);
-                        });
-                      }}
-                    >
-                      {copyFlash ? "Copied" : "Copy URL"}
-                    </button>
-                  </div>
-                  <p className="text-zinc-600">
-                    In Shortcuts → <span className="font-medium">Get Contents of URL</span>: method{" "}
-                    <span className="font-medium">POST</span>, add header{" "}
-                    <code className="rounded bg-zinc-100 px-1">X-Shortcut-Secret</code> — value must match
-                    what your Align host set as <code className="rounded bg-zinc-100 px-1">STEPS_INGEST_SECRET</code>{" "}
-                    (or <code className="rounded bg-zinc-100 px-1">AUTH_SECRET</code>). Everyone uses the same
-                    header value; the URL path is what identifies each user.
-                  </p>
-                  <p className="text-zinc-600">
-                    Body: JSON <code className="rounded bg-zinc-100 px-1">{"{ \"timestamp\": \"…ISO…\", \"steps\": 123 }"}</code>{" "}
-                    or <code className="rounded bg-zinc-100 px-1">{"{ \"samples\": […] }"}</code> (see API notes
-                    below).
-                  </p>
-                  {stepsIngest.notes.length > 0 ? (
-                    <ul className="list-inside list-disc space-y-0.5 text-zinc-600">
-                      {stepsIngest.notes.map((n) => (
-                        <li key={n}>{n}</li>
-                      ))}
-                    </ul>
-                  ) : null}
-                </div>
-              ) : null}
             </div>
             <div className="flex shrink-0 flex-wrap justify-end gap-2">
               <button
@@ -540,6 +526,93 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
               )}
             </div>
           </div>
+          {initial.steps.connected && stepsIngest ? (
+            <div className="mt-3 w-full min-w-0 space-y-2 rounded-lg border border-emerald-200/80 bg-white/90 p-3 text-xs text-zinc-700">
+              <p className="font-semibold text-zinc-900">Shortcuts setup (works for every user)</p>
+              <p>
+                Copy <span className="font-medium">your</span> URL — it ties steps to this account only. Other
+                people sign in, connect here, and put <span className="font-medium">their</span> URL in their
+                own Shortcut.
+              </p>
+              <div className="rounded-lg border border-zinc-200/90 bg-zinc-50/90 px-3 py-2 text-zinc-700">
+                <p className="font-medium text-zinc-800">Vercel / production host</p>
+                <p className="mt-1 leading-relaxed">
+                  This link always starts with your app&apos;s{" "}
+                  <span className="font-medium text-zinc-900">public HTTPS address</span> (not your phone). In
+                  Vercel go to{" "}
+                  <span className="font-medium text-zinc-900">Project → Settings → Environment Variables</span>{" "}
+                  and set:
+                </p>
+                <code className="mt-2 block rounded-md bg-white px-2 py-1.5 font-mono text-[11px] text-zinc-800 ring-1 ring-zinc-200/80">
+                  {`AUTH_URL=${
+                    stepsClientHints.browserOrigin &&
+                    stepsClientHints.browserOrigin.startsWith("https:")
+                      ? stepsClientHints.browserOrigin
+                      : "https://your-project.vercel.app"
+                  }`}
+                </code>
+                <p className="mt-1.5 text-[11px] text-zinc-600">
+                  Use your real deployment URL — <span className="font-medium">same as this site</span> when
+                  you open Settings here — with <span className="font-medium">no trailing slash</span>. Save,
+                  then <span className="font-medium">Redeploy</span>. If <code className="rounded bg-zinc-200/80 px-1">AUTH_URL</code> is
+                  empty, Vercel&apos;s <code className="rounded bg-zinc-200/80 px-1">VERCEL_URL</code> is used so the link still points at your deploy.
+                </p>
+              </div>
+              {stepsClientHints.ingestOriginMismatch ? (
+                <div
+                  className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950"
+                  role="status"
+                >
+                  <p className="font-medium">This URL looks like localhost but you&apos;re on a live site</p>
+                  <p className="mt-1 text-amber-900/90">
+                    Set <code className="rounded bg-amber-100/80 px-1">AUTH_URL</code> to{" "}
+                    <span className="font-mono font-semibold">
+                      {stepsClientHints.browserOrigin ?? "this site’s origin"}
+                    </span>{" "}
+                    in Vercel, redeploy, then refresh this page and copy the URL again.
+                  </p>
+                </div>
+              ) : null}
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                <code className="min-w-0 flex-1 break-all rounded-md bg-zinc-100 px-2 py-1.5 text-[11px] leading-snug text-zinc-800">
+                  {stepsIngest.ingestUrl}
+                </code>
+                <button
+                  type="button"
+                  className="shrink-0 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(stepsIngest.ingestUrl).then(() => {
+                      setCopyFlash(true);
+                      window.setTimeout(() => setCopyFlash(false), 2000);
+                    });
+                  }}
+                >
+                  {copyFlash ? "Copied" : "Copy URL"}
+                </button>
+              </div>
+              <p className="text-zinc-600">
+                In Shortcuts → <span className="font-medium">Get Contents of URL</span>: method{" "}
+                <span className="font-medium">POST</span>, add header{" "}
+                <code className="rounded bg-zinc-100 px-1">X-Shortcut-Secret</code> — value must match what your
+                Align host set as <code className="rounded bg-zinc-100 px-1">STEPS_INGEST_SECRET</code> (or{" "}
+                <code className="rounded bg-zinc-100 px-1">AUTH_SECRET</code>). Everyone uses the same header value;
+                the URL path is what identifies each user.
+              </p>
+              <p className="text-zinc-600">
+                Body: JSON{" "}
+                <code className="rounded bg-zinc-100 px-1">{"{ \"timestamp\": \"…ISO…\", \"steps\": 123 }"}</code>{" "}
+                or <code className="rounded bg-zinc-100 px-1">{"{ \"samples\": […] }"}</code> (see API notes
+                below).
+              </p>
+              {stepsIngest.notes.length > 0 ? (
+                <ul className="list-inside list-disc space-y-0.5 text-zinc-600">
+                  {stepsIngest.notes.map((n) => (
+                    <li key={n}>{n}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
     </section>

@@ -9,6 +9,7 @@ import {
   verifyDexcomState,
 } from "@/lib/dexcom/oauth";
 import { sanitizeOAuthReturnTo } from "@/lib/oauth-return-to";
+import { getPublicAppBaseUrl } from "@/lib/public-app-base-url";
 
 type DexcomTokenResponse = {
   access_token: string;
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
   const state = url.searchParams.get("state");
   const authError = url.searchParams.get("error");
 
-  const appBase = process.env.AUTH_URL ?? "http://localhost:4000";
+  const appBase = getPublicAppBaseUrl();
   if (authError) {
     const path = pathFromDexcomState(state) ?? "/";
     return redirectWithDexcomQuery(appBase, path, { dexcom_error: authError });

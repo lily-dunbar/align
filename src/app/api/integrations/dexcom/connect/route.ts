@@ -6,13 +6,12 @@ import {
   getDexcomAuthorizeUrl,
   getDexcomRedirectUri,
 } from "@/lib/dexcom/oauth";
+import { getPublicAppBaseUrl } from "@/lib/public-app-base-url";
 
 export async function GET(request: Request) {
   const { userId } = await auth();
   if (!userId) {
-    return NextResponse.redirect(
-      new URL("/sign-in", process.env.AUTH_URL ?? "http://localhost:4000"),
-    );
+    return NextResponse.redirect(new URL("/sign-in", getPublicAppBaseUrl()));
   }
 
   const { searchParams } = new URL(request.url);

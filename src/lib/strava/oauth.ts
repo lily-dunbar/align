@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 import { sanitizeOAuthReturnTo } from "@/lib/oauth-return-to";
+import { getPublicAppBaseUrl } from "@/lib/public-app-base-url";
 
 type StravaStatePayload = {
   nonce: string;
@@ -98,12 +99,5 @@ export function getStravaRedirectUri() {
   const explicit = process.env.STRAVA_REDIRECT_URI;
   if (explicit) return explicit;
 
-  const base = process.env.AUTH_URL;
-  if (!base) {
-    throw new Error(
-      "Set AUTH_URL (or STRAVA_REDIRECT_URI) before using Strava OAuth",
-    );
-  }
-
-  return `${base.replace(/\/$/, "")}/api/integrations/strava/callback`;
+  return `${getPublicAppBaseUrl()}/api/integrations/strava/callback`;
 }

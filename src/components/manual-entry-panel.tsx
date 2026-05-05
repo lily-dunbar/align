@@ -584,7 +584,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                     id="manual-entry-title"
                     className="text-xl font-bold tracking-tight text-zinc-900"
                   >
-                    Add activity
+                    Add / edit entries
                   </h3>
                   <p className="mt-0.5 text-sm font-medium text-align-muted">
                     {formatHeaderDate(resolvedDateYmd)}
@@ -620,7 +620,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                   className={tabBtn(tab === "activity")}
                   onClick={() => setTab("activity")}
                 >
-                  🏃 Add Activity
+                  🏃 Add / edit activity
                 </button>
                 <button
                   type="button"

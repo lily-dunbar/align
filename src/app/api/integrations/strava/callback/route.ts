@@ -9,6 +9,7 @@ import {
   verifyStravaState,
 } from "@/lib/strava/oauth";
 import { sanitizeOAuthReturnTo } from "@/lib/oauth-return-to";
+import { getPublicAppBaseUrl } from "@/lib/public-app-base-url";
 
 type StravaTokenResponse = {
   token_type: string;
@@ -45,7 +46,7 @@ function pathFromStravaState(stateParam: string | null): string | undefined {
 }
 
 export async function GET(request: NextRequest) {
-  const appBase = process.env.AUTH_URL ?? "http://localhost:4000";
+  const appBase = getPublicAppBaseUrl();
 
   const url = new URL(request.url);
   const code = url.searchParams.get("code");

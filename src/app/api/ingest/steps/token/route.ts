@@ -1,17 +1,14 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
+import { getPublicAppBaseUrl } from "@/lib/public-app-base-url";
 import {
   getOrCreateStepIngestToken,
   regenerateStepIngestToken,
 } from "@/lib/steps/token-store";
 
-function appBaseUrl() {
-  return (process.env.AUTH_URL ?? "http://localhost:4000").replace(/\/$/, "");
-}
-
 function buildResponse(userId: string, token: string) {
-  const appBase = appBaseUrl();
+  const appBase = getPublicAppBaseUrl();
   return {
     userId,
     stepIngestToken: token,

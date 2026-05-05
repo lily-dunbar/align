@@ -84,7 +84,7 @@ export function DateNav({ initialDateYmd }: Props) {
             window.dispatchEvent(new CustomEvent(OPEN_MANUAL_MODAL_EVENT));
           }}
         >
-          Add activity
+          Add / edit activity
         </button>
       </div>
     </section>

@@ -6,10 +6,11 @@ import {
   getStravaAuthorizeUrl,
   getStravaRedirectUri,
 } from "@/lib/strava/oauth";
+import { getPublicAppBaseUrl } from "@/lib/public-app-base-url";
 
 export async function GET(request: Request) {
   const { userId } = await auth();
-  const appBase = process.env.AUTH_URL ?? "http://localhost:4000";
+  const appBase = getPublicAppBaseUrl();
 
   if (!userId) {
     return NextResponse.redirect(new URL("/sign-in", appBase));

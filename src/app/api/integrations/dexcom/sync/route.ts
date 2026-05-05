@@ -3,9 +3,10 @@ import { NextResponse } from "next/server";
 
 import { syncDexcomGlucoseReadings } from "@/lib/dexcom/client";
 import { sanitizeOAuthReturnTo } from "@/lib/oauth-return-to";
+import { getPublicAppBaseUrl } from "@/lib/public-app-base-url";
 
 function appBaseUrl() {
-  return process.env.AUTH_URL ?? "http://localhost:4000";
+  return getPublicAppBaseUrl();
 }
 
 export async function POST(request: Request) {

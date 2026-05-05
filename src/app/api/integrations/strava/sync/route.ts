@@ -36,6 +36,7 @@ export async function POST(request: Request) {
     redirectUrl.searchParams.set("strava_fetched", String(result.fetched));
     redirectUrl.searchParams.set("strava_inserted", String(result.inserted));
     redirectUrl.searchParams.set("strava_updated", String(result.updated));
+    redirectUrl.searchParams.set("strava_unchanged", String(result.unchanged));
     redirectUrl.searchParams.set("strava_first_sync", String(result.firstSync));
     return NextResponse.redirect(redirectUrl);
   } catch (error) {

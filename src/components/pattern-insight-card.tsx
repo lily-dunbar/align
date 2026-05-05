@@ -1,5 +1,10 @@
 import { PatternLearnMorePanel } from "@/components/pattern-learn-more-panel";
-import { confidenceBadgeLabel, humanConfidenceLabel } from "@/lib/patterns/confidence-label";
+import {
+  CONFIDENCE_BADGE_SURFACE_CLASS,
+  confidenceBadgeLabel,
+  confidenceBadgeOpacity,
+  humanConfidenceLabel,
+} from "@/lib/patterns/confidence-label";
 import type { PatternInsightJson } from "@/lib/patterns/types";
 
 type Props = {
@@ -45,7 +50,8 @@ export function PatternInsightCard({ pattern, compact, targetLowMgdl, targetHigh
 
       <div className={`flex flex-wrap items-center gap-2.5 ${compact ? "mt-3" : "mt-4"}`}>
         <span
-          className="inline-flex rounded-full bg-align-nav-active px-2.5 py-1 text-xs font-medium text-align-forest"
+          className={CONFIDENCE_BADGE_SURFACE_CLASS}
+          style={{ opacity: confidenceBadgeOpacity(pattern.confidencePercent) }}
           title={confidenceHint}
         >
           {confidenceBadgeLabel(pattern.confidencePercent)}

@@ -185,7 +185,7 @@ const SOURCE_SHORTCUTS_FILE = "shortcuts_file";
 export async function persistParsedCsvLinesToDb(
   userId: string,
   lines: ParsedCsvLine[],
-): Promise<{ inserted: number; updated: number; buckets: number }> {
+): Promise<{ inserted: number; updated: number; unchanged: number; buckets: number }> {
   await ensureLocalUserRow(userId);
 
   const bucketMap = new Map<string, { bucketStart: Date; steps: number }>();
@@ -199,6 +199,7 @@ export async function persistParsedCsvLinesToDb(
 
   let inserted = 0;
   let updated = 0;
+  let unchanged = 0;
   for (const { bucketStart, steps } of bucketMap.values()) {
     const existing = await db.query.hourlySteps.findFirst({
       where: and(
@@ -206,18 +207,22 @@ export async function persistParsedCsvLinesToDb(
         eq(hourlySteps.bucketStart, bucketStart),
         eq(hourlySteps.source, SOURCE_SHORTCUTS_FILE),
       ),
-      columns: { id: true },
+      columns: { id: true, stepCount: true },
     });
     if (existing) {
-      await db
-        .update(hourlySteps)
-        .set({
-          stepCount: steps,
-          receivedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(hourlySteps.id, existing.id));
-      updated += 1;
+      if (existing.stepCount === steps) {
+        unchanged += 1;
+      } else {
+        await db
+          .update(hourlySteps)
+          .set({
+            stepCount: steps,
+            receivedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(hourlySteps.id, existing.id));
+        updated += 1;
+      }
     } else {
       await db.insert(hourlySteps).values({
         userId,
@@ -229,7 +234,7 @@ export async function persistParsedCsvLinesToDb(
       inserted += 1;
     }
   }
-  return { inserted, updated, buckets: bucketMap.size };
+  return { inserted, updated, unchanged, buckets: bucketMap.size };
 }
 
 /** Legacy: file is a single integer = today’s total steps (no hourly breakdown). */
@@ -240,28 +245,31 @@ export async function persistDigitTotalForTodayPacific(
   await ensureLocalUserRow(userId);
   const todayYmd = formatInTimeZone(new Date(), getShortcutsCsvTimeZone(), "yyyy-MM-dd");
   const bucketStart = pacificWallToUtc(todayYmd, 0, 0, 0);
+  const rounded = Math.max(0, Math.round(totalSteps));
   const existing = await db.query.hourlySteps.findFirst({
     where: and(
       eq(hourlySteps.userId, userId),
       eq(hourlySteps.bucketStart, bucketStart),
       eq(hourlySteps.source, SOURCE_SHORTCUTS_FILE),
     ),
-    columns: { id: true },
+    columns: { id: true, stepCount: true },
   });
   if (existing) {
-    await db
-      .update(hourlySteps)
-      .set({
-        stepCount: Math.max(0, Math.round(totalSteps)),
-        receivedAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(hourlySteps.id, existing.id));
+    if (existing.stepCount !== rounded) {
+      await db
+        .update(hourlySteps)
+        .set({
+          stepCount: rounded,
+          receivedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(hourlySteps.id, existing.id));
+    }
   } else {
     await db.insert(hourlySteps).values({
       userId,
       bucketStart,
-      stepCount: Math.max(0, Math.round(totalSteps)),
+      stepCount: rounded,
       source: SOURCE_SHORTCUTS_FILE,
       receivedAt: new Date(),
     });
@@ -368,6 +376,7 @@ export async function readShortcutsSteps(): Promise<ReadShortcutsStepsResult> {
 export type SyncShortcutsFileResult = ReadShortcutsStepsResult & {
   inserted?: number;
   updated?: number;
+  unchanged?: number;
   buckets?: number;
 };
 
@@ -399,7 +408,7 @@ export async function syncShortcutsStepsFromDiskToDb(userId: string): Promise<Sy
     };
   }
 
-  const { inserted, updated, buckets } = await persistParsedCsvLinesToDb(userId, lines);
+  const { inserted, updated, unchanged, buckets } = await persistParsedCsvLinesToDb(userId, lines);
   const todayYmd = formatInTimeZone(new Date(), getShortcutsCsvTimeZone(), "yyyy-MM-dd");
   const agg = aggregateCsvForPacificYmd(lines, todayYmd);
   const steps = agg?.totalSteps ?? 0;
@@ -412,6 +421,7 @@ export async function syncShortcutsStepsFromDiskToDb(userId: string): Promise<Sy
     lineCount: lines.length,
     inserted,
     updated,
+    unchanged,
     buckets,
   };
 }

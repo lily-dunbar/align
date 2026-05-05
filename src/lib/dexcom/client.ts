@@ -24,6 +24,17 @@ type DexcomEgvInput = {
   trendRate: number | null;
 };
 
+function sameGlucoseSample(
+  row: { mgdl: number; trend: string | null; trendRate: number | null },
+  egv: DexcomEgvInput,
+) {
+  return (
+    row.mgdl === egv.mgdl &&
+    (row.trend ?? null) === (egv.trend ?? null) &&
+    (row.trendRate ?? null) === (egv.trendRate ?? null)
+  );
+}
+
 const REFRESH_SKEW_MS = 60_000;
 const DEXCOM_MAX_RANGE_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -257,6 +268,7 @@ export async function syncDexcomGlucoseReadings(
 
   let inserted = 0;
   let updated = 0;
+  let unchanged = 0;
 
   for (const egv of egvs) {
     const existing = await db.query.glucoseReadings.findFirst({
@@ -264,10 +276,14 @@ export async function syncDexcomGlucoseReadings(
         eq(glucoseReadings.userId, userId),
         eq(glucoseReadings.observedAt, egv.observedAt),
       ),
-      columns: { id: true },
+      columns: { id: true, mgdl: true, trend: true, trendRate: true },
     });
 
     if (existing) {
+      if (sameGlucoseSample(existing, egv)) {
+        unchanged += 1;
+        continue;
+      }
       await db
         .update(glucoseReadings)
         .set({
@@ -295,6 +311,7 @@ export async function syncDexcomGlucoseReadings(
     fetched: egvs.length,
     inserted,
     updated,
+    unchanged,
     startDate: formatIsoNoMillis(start),
     endDate: formatIsoNoMillis(now),
     firstSync: !newest,

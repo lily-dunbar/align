@@ -1,9 +1,8 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { SignInButton, useAuth, UserButton } from "@clerk/nextjs";
-
-import { AlignWordmark } from "@/components/align-wordmark";
 
 function UserMenuIcon() {
   return (
@@ -48,10 +47,18 @@ export function AppHeader({ demoMode = false }: AppHeaderProps) {
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 md:px-8">
         <Link
           href="/"
-          className="group flex items-center transition-opacity hover:opacity-[0.92] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-align-forest/25 focus-visible:ring-offset-2"
+          className="group flex shrink-0 items-center rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-align-forest/25 focus-visible:ring-offset-2"
           aria-label="Align home"
         >
-          <AlignWordmark className="shrink-0" />
+          <Image
+            src="/brand/align-wordmark.png"
+            alt="Align"
+            width={598}
+            height={227}
+            className="h-7 w-auto object-contain object-left transition-opacity group-hover:opacity-[0.88] md:h-8"
+            priority
+            sizes="(max-width: 768px) 180px, 200px"
+          />
         </Link>
 
         <div className="flex shrink-0 items-center">

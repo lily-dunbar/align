@@ -66,6 +66,82 @@ function epochSec(date: Date) {
   return Math.floor(date.getTime() / 1000);
 }
 
+function intEq(a: number | null, b: number | null) {
+  return (a ?? null) === (b ?? null);
+}
+
+function strEq(a: string | null, b: string | null) {
+  return (a ?? null) === (b ?? null);
+}
+
+function dateEq(a: Date | null, b: Date | null) {
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return a.getTime() === b.getTime();
+}
+
+type ActivityUpsertValues = {
+  userId: string;
+  provider: "strava";
+  providerActivityId: string;
+  name: string | null;
+  activityType: string | null;
+  sportType: string | null;
+  startAt: Date;
+  endAt: Date | null;
+  durationSec: number | null;
+  distanceMeters: number | null;
+  movingTimeSec: number | null;
+  elapsedTimeSec: number | null;
+  totalElevationGainMeters: number | null;
+  averageHeartrate: number | null;
+  maxHeartrate: number | null;
+  averageWatts: number | null;
+  kilojoules: number | null;
+  calories: number | null;
+  sourcePayload: string;
+};
+
+type ActivityCompareRow = Pick<
+  ActivityUpsertValues,
+  | "name"
+  | "activityType"
+  | "sportType"
+  | "startAt"
+  | "endAt"
+  | "durationSec"
+  | "distanceMeters"
+  | "movingTimeSec"
+  | "elapsedTimeSec"
+  | "totalElevationGainMeters"
+  | "averageHeartrate"
+  | "maxHeartrate"
+  | "averageWatts"
+  | "kilojoules"
+  | "calories"
+> & { sourcePayload: string | null };
+
+function stravaActivityUnchanged(existing: ActivityCompareRow, next: ActivityUpsertValues) {
+  return (
+    strEq(existing.name, next.name) &&
+    strEq(existing.activityType, next.activityType) &&
+    strEq(existing.sportType, next.sportType) &&
+    dateEq(existing.startAt, next.startAt) &&
+    dateEq(existing.endAt, next.endAt) &&
+    intEq(existing.durationSec, next.durationSec) &&
+    intEq(existing.distanceMeters, next.distanceMeters) &&
+    intEq(existing.movingTimeSec, next.movingTimeSec) &&
+    intEq(existing.elapsedTimeSec, next.elapsedTimeSec) &&
+    intEq(existing.totalElevationGainMeters, next.totalElevationGainMeters) &&
+    intEq(existing.averageHeartrate, next.averageHeartrate) &&
+    intEq(existing.maxHeartrate, next.maxHeartrate) &&
+    intEq(existing.averageWatts, next.averageWatts) &&
+    intEq(existing.kilojoules, next.kilojoules) &&
+    intEq(existing.calories, next.calories) &&
+    (existing.sourcePayload ?? "") === next.sourcePayload
+  );
+}
+
 async function refreshStravaToken(userId: string) {
   const current = await db.query.stravaTokens.findFirst({
     where: eq(stravaTokens.userId, userId),
@@ -191,6 +267,7 @@ export async function syncStravaActivities(userId: string) {
   let fetched = 0;
   let inserted = 0;
   let updated = 0;
+  let unchanged = 0;
 
   while (page <= MAX_SYNC_PAGES) {
     const pageRows = await fetchStravaActivities(accessToken, {
@@ -207,22 +284,13 @@ export async function syncStravaActivities(userId: string) {
       const startAt = parseDate(activity.start_date);
       if (!providerActivityId || !startAt) continue;
 
-      const existing = await db.query.activities.findFirst({
-        where: and(
-          eq(activities.userId, userId),
-          eq(activities.provider, "strava"),
-          eq(activities.providerActivityId, providerActivityId),
-        ),
-        columns: { id: true },
-      });
-
       const elapsedTime = asInt(activity.elapsed_time);
       const movingTime = asInt(activity.moving_time);
       const endAt = elapsedTime ? new Date(startAt.getTime() + elapsedTime * 1000) : null;
 
-      const values = {
+      const values: ActivityUpsertValues = {
         userId,
-        provider: "strava" as const,
+        provider: "strava",
         providerActivityId,
         name: activity.name ?? null,
         activityType: activity.type ?? null,
@@ -242,15 +310,46 @@ export async function syncStravaActivities(userId: string) {
         sourcePayload: JSON.stringify(activity),
       };
 
+      const existing = await db.query.activities.findFirst({
+        where: and(
+          eq(activities.userId, userId),
+          eq(activities.provider, "strava"),
+          eq(activities.providerActivityId, providerActivityId),
+        ),
+        columns: {
+          id: true,
+          name: true,
+          activityType: true,
+          sportType: true,
+          startAt: true,
+          endAt: true,
+          durationSec: true,
+          distanceMeters: true,
+          movingTimeSec: true,
+          elapsedTimeSec: true,
+          totalElevationGainMeters: true,
+          averageHeartrate: true,
+          maxHeartrate: true,
+          averageWatts: true,
+          kilojoules: true,
+          calories: true,
+          sourcePayload: true,
+        },
+      });
+
       if (existing) {
-        await db
-          .update(activities)
-          .set({
-            ...values,
-            updatedAt: new Date(),
-          })
-          .where(eq(activities.id, existing.id));
-        updated += 1;
+        if (stravaActivityUnchanged(existing, values)) {
+          unchanged += 1;
+        } else {
+          await db
+            .update(activities)
+            .set({
+              ...values,
+              updatedAt: new Date(),
+            })
+            .where(eq(activities.id, existing.id));
+          updated += 1;
+        }
       } else {
         await db.insert(activities).values(values);
         inserted += 1;
@@ -267,6 +366,7 @@ export async function syncStravaActivities(userId: string) {
     fetched,
     inserted,
     updated,
+    unchanged,
     firstSync: !latest,
     lookbackDays,
     windowStart: windowStart.toISOString(),

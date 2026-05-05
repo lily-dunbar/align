@@ -301,7 +301,7 @@ export function PatternLearnMorePanel({ learnMore, targetLowMgdl, targetHighMgdl
       >
         <span>Learn more</span>
         <span
-          className="text-lg leading-none text-align-muted transition group-hover:text-align-forest"
+          className="text-2xl leading-none text-align-muted transition group-hover:text-align-forest sm:text-[1.75rem]"
           aria-hidden
         >
           {open ? "▾" : "▸"}

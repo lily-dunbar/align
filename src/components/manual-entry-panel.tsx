@@ -620,7 +620,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                   className={tabBtn(tab === "activity")}
                   onClick={() => setTab("activity")}
                 >
-                  🏃 Add / edit activity
+                  🏃 Add/Edit Activity
                 </button>
                 <button
                   type="button"

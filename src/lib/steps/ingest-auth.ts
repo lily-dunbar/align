@@ -1,6 +1,9 @@
 import type { NextRequest } from "next/server";
 
-/** Same resolution order as signed token helpers — keep Shortcut header + env aligned. */
+/**
+ * Legacy / internal: first non-empty of STEPS_INGEST_SECRET, STEPS_TOKEN_SECRET, AUTH_SECRET.
+ * Used by deprecated POST /api/ingest/steps (no token path) only.
+ */
 export function getStepsIngestSharedSecret(): string | null {
   const s =
     process.env.STEPS_INGEST_SECRET?.trim() ||
@@ -9,12 +12,43 @@ export function getStepsIngestSharedSecret(): string | null {
   return s || null;
 }
 
+/**
+ * Optional header auth for POST /api/ingest/steps/:token.
+ * Only `STEPS_INGEST_SECRET` is used — if unset, the opaque URL token alone authorizes the request.
+ * (AUTH_SECRET is not required for Shortcuts; set STEPS_INGEST_SECRET only if you want X-Shortcut-Secret.)
+ */
+export function getStepsShortcutHeaderSecret(): string | null {
+  const s = process.env.STEPS_INGEST_SECRET?.trim();
+  return s || null;
+}
+
+function readShortcutSecretHeader(req: NextRequest): string | null {
+  const candidates = [
+    "x-shortcut-secret",
+    "x_shortcut_secret",
+    "x-shortcut_secret",
+    "x_shortcut-secret",
+  ];
+  for (const name of candidates) {
+    const v = req.headers.get(name)?.trim();
+    if (v) return v;
+  }
+  return null;
+}
+
 export function isStepsIngestAuthorized(req: NextRequest): boolean {
-  const required = getStepsIngestSharedSecret();
-  if (!required) return false;
+  const required = getStepsShortcutHeaderSecret();
+  if (!required) return true;
+
   const authHeader = req.headers.get("authorization");
-  const shortcutHeader = req.headers.get("x-shortcut-secret");
+  const shortcutHeader = readShortcutSecretHeader(req);
   const bearer =
-    authHeader && authHeader.startsWith("Bearer ") ? authHeader.slice("Bearer ".length) : null;
-  return bearer === required || shortcutHeader === required;
+    authHeader && authHeader.startsWith("Bearer ")
+      ? authHeader.slice("Bearer ".length).trim()
+      : null;
+  const fromShortcut = shortcutHeader ?? "";
+  return (
+    (bearer !== null && bearer === required) ||
+    (fromShortcut !== "" && fromShortcut === required)
+  );
 }

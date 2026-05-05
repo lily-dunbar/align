@@ -373,9 +373,10 @@ export type ShareSyncOptions = {
 async function persistShareGlucoseEntries(
   userId: string,
   entries: ReadonlyArray<{ observedAt: Date; mgdl: number; trend: string | null }>,
-): Promise<{ inserted: number; updated: number; fetched: number }> {
+): Promise<{ inserted: number; updated: number; unchanged: number; fetched: number }> {
   let inserted = 0;
   let updated = 0;
+  let unchanged = 0;
 
   for (const entry of entries) {
     const observedAt = entry.observedAt;
@@ -386,10 +387,18 @@ async function persistShareGlucoseEntries(
         eq(glucoseReadings.userId, userId),
         eq(glucoseReadings.observedAt, observedAt),
       ),
-      columns: { id: true },
+      columns: { id: true, mgdl: true, trend: true, trendRate: true },
     });
 
     if (existing) {
+      const same =
+        existing.mgdl === entry.mgdl &&
+        (existing.trend ?? null) === (entry.trend ?? null) &&
+        (existing.trendRate ?? null) === null;
+      if (same) {
+        unchanged += 1;
+        continue;
+      }
       await db
         .update(glucoseReadings)
         .set({
@@ -413,7 +422,7 @@ async function persistShareGlucoseEntries(
     }
   }
 
-  return { inserted, updated, fetched: entries.length };
+  return { inserted, updated, unchanged, fetched: entries.length };
 }
 
 /**
@@ -453,11 +462,15 @@ export async function syncDexcomGlucoseReadingsFromShare(
       })
       .filter((e) => !Number.isNaN(e.observedAt.getTime()));
 
-    const { inserted, updated, fetched } = await persistShareGlucoseEntries(userId, entries);
+    const { inserted, updated, unchanged, fetched } = await persistShareGlucoseEntries(
+      userId,
+      entries,
+    );
     return {
       fetched,
       inserted,
       updated,
+      unchanged,
       startDate: formatIsoNoMillis(new Date(now - minutesRequested * 60 * 1000)),
       endDate: formatIsoNoMillis(new Date(now)),
       firstSync: !newest,
@@ -477,12 +490,16 @@ export async function syncDexcomGlucoseReadingsFromShare(
     maxCount,
   );
 
-  const { inserted, updated, fetched } = await persistShareGlucoseEntries(userId, entries);
+  const { inserted, updated, unchanged, fetched } = await persistShareGlucoseEntries(
+    userId,
+    entries,
+  );
 
   return {
     fetched,
     inserted,
     updated,
+    unchanged,
     startDate: formatIsoNoMillis(new Date(now - minutesLookback * 60 * 1000)),
     endDate: formatIsoNoMillis(new Date(now)),
     firstSync: !newest,

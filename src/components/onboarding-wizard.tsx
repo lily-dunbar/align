@@ -214,7 +214,7 @@ export function OnboardingWizard({ initialPrefs }: { initialPrefs: UserPreferenc
             </p>
             <div className="flex flex-wrap items-center gap-3 pt-1">
               <button type="button" className={btnPrimary} onClick={() => void connectStepsIngest()}>
-                Connect steps ingest
+                Connect
               </button>
               <button type="button" className={btnSecondary} onClick={() => goTo("display")}>
                 Skip

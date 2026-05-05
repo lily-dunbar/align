@@ -120,18 +120,6 @@ function timelineTicks(
   return timelineTicks12hRange(domain[0], domain[1]);
 }
 
-function timelineSubtitle(
-  window: TimelineWindow,
-  _viewedYmd: string,
-  _timeZone: string,
-  _now: Date,
-): string {
-  if (window === "24h") {
-    return "Full calendar day (local)";
-  }
-  return "Last 12 hours through current time";
-}
-
 type ChartRow = {
   xHour: number;
   glucose: number | null;
@@ -540,8 +528,13 @@ export function DailyViewChart({ dateYmd }: Props) {
   const [timelineWindow, setTimelineWindow] = useState<TimelineWindow>("24h");
   const [nowTick, setNowTick] = useState(0);
 
-  const loadDayData = useCallback(async () => {
+  type DayLoadMode = "navigation" | "same-day-refresh";
+
+  const loadDayData = useCallback(async (mode: DayLoadMode = "navigation") => {
     setError(null);
+    if (mode === "navigation") {
+      setPayload(null);
+    }
     try {
       const tz = effectiveTz;
       const resp = await fetch(
@@ -560,14 +553,14 @@ export function DailyViewChart({ dateYmd }: Props) {
 
   useEffect(() => {
     const id = requestAnimationFrame(() => {
-      void loadDayData();
+      void loadDayData("navigation");
     });
     return () => cancelAnimationFrame(id);
   }, [loadDayData]);
 
   useEffect(() => {
     function onDayDataChanged() {
-      void loadDayData();
+      void loadDayData("same-day-refresh");
     }
     window.addEventListener(DAY_DATA_CHANGED_EVENT, onDayDataChanged);
     return () => {
@@ -582,6 +575,16 @@ export function DailyViewChart({ dateYmd }: Props) {
     if (timelineWindow !== "12h" || !isTodayView) return;
     const id = setInterval(() => setNowTick((n) => n + 1), 60_000);
     return () => clearInterval(id);
+  }, [payload, resolvedDateYmd, timelineWindow]);
+
+  /** 12h rolling window is only for the current local calendar day; other days stay 24h. */
+  useEffect(() => {
+    if (!payload) return;
+    const tz = payload.day.timeZone;
+    const isTodayView = resolvedDateYmd === getLocalCalendarYmd(new Date(), tz);
+    if (!isTodayView && timelineWindow === "12h") {
+      setTimelineWindow("24h");
+    }
   }, [payload, resolvedDateYmd, timelineWindow]);
 
   useEffect(() => {
@@ -673,10 +676,12 @@ export function DailyViewChart({ dateYmd }: Props) {
 
   void nowTick;
   const chartNow = new Date();
-  const xDomain = timelineDomain(timelineWindow, resolvedDateYmd, tz, chartNow);
+  const isTodayView = resolvedDateYmd === getLocalCalendarYmd(new Date(), tz);
+  const effectiveTimelineWindow: TimelineWindow =
+    isTodayView && timelineWindow === "12h" ? "12h" : "24h";
+  const xDomain = timelineDomain(effectiveTimelineWindow, resolvedDateYmd, tz, chartNow);
   const [xMin, xMax] = xDomain;
-  const xTicks = timelineTicks(timelineWindow, xDomain);
-  const timelineHelp = timelineSubtitle(timelineWindow, resolvedDateYmd, tz, chartNow);
+  const xTicks = timelineTicks(effectiveTimelineWindow, xDomain);
 
   return (
     <section className="w-full min-w-0 rounded-2xl border border-align-border/90 bg-white/90 p-5 text-left ring-1 ring-black/[0.03] backdrop-blur-[2px] md:p-6">
@@ -692,27 +697,40 @@ export function DailyViewChart({ dateYmd }: Props) {
                 { id: "24h" as const, label: "24h" },
                 { id: "12h" as const, label: "12h" },
               ] as const
-            ).map(({ id, label }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setTimelineWindow(id)}
-                className={
-                  timelineWindow === id
-                    ? "min-h-9 flex-1 rounded-full bg-align-forest px-3 py-1.5 text-center text-[11px] font-medium text-white shadow-sm shadow-black/10 sm:flex-none sm:min-h-0"
-                    : "min-h-9 flex-1 rounded-full bg-align-subtle px-3 py-1.5 text-center text-[11px] font-medium text-zinc-600 ring-1 ring-black/[0.04] hover:bg-white sm:flex-none sm:min-h-0"
-                }
-              >
-                {label}
-              </button>
-            ))}
+            ).map(({ id, label }) => {
+              const is12 = id === "12h";
+              const disabled = is12 && !isTodayView;
+              const selected = effectiveTimelineWindow === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  disabled={disabled}
+                  title={
+                    disabled ? "12h view is only available when viewing today" : undefined
+                  }
+                  onClick={() => {
+                    if (!disabled) setTimelineWindow(id);
+                  }}
+                  className={
+                    selected
+                      ? "min-h-9 flex-1 rounded-full bg-align-forest px-3 py-1.5 text-center text-[11px] font-medium text-white shadow-sm shadow-black/10 sm:flex-none sm:min-h-0"
+                      : disabled
+                        ? "min-h-9 flex-1 cursor-not-allowed rounded-full bg-zinc-100 px-3 py-1.5 text-center text-[11px] font-medium text-zinc-400 ring-1 ring-black/[0.04] sm:flex-none sm:min-h-0"
+                        : "min-h-9 flex-1 rounded-full bg-align-subtle px-3 py-1.5 text-center text-[11px] font-medium text-zinc-600 ring-1 ring-black/[0.04] hover:bg-white sm:flex-none sm:min-h-0"
+                  }
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
-      <p className="mt-1.5 text-xs text-align-muted">
-        {tz} · {timelineHelp}
-      </p>
-      <div className="mt-4 h-[22rem] min-h-[20rem] w-full min-w-0 rounded-xl bg-gradient-to-b from-align-subtle/90 to-align-canvas/40 p-2 ring-1 ring-inset ring-black/[0.03] sm:h-96">
+      <div
+        key={resolvedDateYmd}
+        className="mt-4 h-[22rem] min-h-[20rem] w-full min-w-0 rounded-xl bg-gradient-to-b from-align-subtle/90 to-align-canvas/40 p-2 ring-1 ring-inset ring-black/[0.03] motion-safe:animate-[alignChartEnter_0.38s_ease-out_both] motion-reduce:animate-none sm:h-96"
+      >
         <ResponsiveContainer width="100%" height="100%" minWidth={280} minHeight={260}>
           <ComposedChart data={chartData} margin={{ top: 36, right: 12, bottom: 8, left: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e4ebea" />
@@ -873,7 +891,7 @@ export function DailyViewChart({ dateYmd }: Props) {
               tickFormatter={hourLabel}
               tick={{ fontSize: 11 }}
               allowDataOverflow
-              {...(timelineWindow === "12h"
+              {...(effectiveTimelineWindow === "12h"
                 ? { niceTicks: "none" as const, padding: { left: 0, right: 0 } }
                 : {})}
             />

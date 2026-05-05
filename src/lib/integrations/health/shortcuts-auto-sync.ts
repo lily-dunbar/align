@@ -47,7 +47,7 @@ async function runOnce(userId: string, reason: "startup" | "scheduled") {
       return;
     }
     console.info(
-      `[shortcuts-auto-sync] ${reason} ok: steps=${result.steps} inserted=${result.inserted ?? 0} updated=${result.updated ?? 0} path=${result.filePath}`,
+      `[shortcuts-auto-sync] ${reason} ok: steps=${result.steps} inserted=${result.inserted ?? 0} updated=${result.updated ?? 0} unchanged=${result.unchanged ?? 0} path=${result.filePath}`,
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

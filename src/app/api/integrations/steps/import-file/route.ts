@@ -85,7 +85,7 @@ export async function POST() {
       );
     }
 
-    const { inserted, updated, buckets } = await persistParsedCsvLinesToDb(userId, lines);
+    const { inserted, updated, unchanged, buckets } = await persistParsedCsvLinesToDb(userId, lines);
     const todayYmd = formatInTimeZone(new Date(), getShortcutsCsvTimeZone(), "yyyy-MM-dd");
     const agg = aggregateCsvForPacificYmd(lines, todayYmd);
     const stepsToday = agg?.totalSteps ?? 0;
@@ -97,6 +97,7 @@ export async function POST() {
       lineCount: lines.length,
       inserted,
       updated,
+      unchanged,
       buckets,
       stepsTodayPacific: stepsToday,
     });

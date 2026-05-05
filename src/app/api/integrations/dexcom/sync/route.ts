@@ -46,6 +46,7 @@ export async function POST(request: Request) {
     redirectUrl.searchParams.set("fetched", String(result.fetched));
     redirectUrl.searchParams.set("inserted", String(result.inserted));
     redirectUrl.searchParams.set("updated", String(result.updated));
+    redirectUrl.searchParams.set("unchanged", String(result.unchanged ?? 0));
     redirectUrl.searchParams.set("first_sync", String(result.firstSync));
     return NextResponse.redirect(redirectUrl);
   } catch (error) {

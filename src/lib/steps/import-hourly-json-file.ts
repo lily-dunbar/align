@@ -93,7 +93,7 @@ function parseSamplesJson(text: string): { timestamp: string; steps: number }[] 
 export async function importHourlyStepsFromJsonString(
   userId: string,
   text: string,
-): Promise<{ inserted: number; updated: number; count: number }> {
+): Promise<{ inserted: number; updated: number; unchanged: number; count: number }> {
   const samples = parseSamplesJson(text);
 
   await db
@@ -110,6 +110,7 @@ export async function importHourlyStepsFromJsonString(
   const source = "apple_shortcuts";
   let inserted = 0;
   let updated = 0;
+  let unchanged = 0;
 
   for (const sample of samples) {
     const bucketStart = toHourBucket(sample.timestamp);
@@ -119,19 +120,23 @@ export async function importHourlyStepsFromJsonString(
         eq(hourlySteps.bucketStart, bucketStart),
         eq(hourlySteps.source, source),
       ),
-      columns: { id: true },
+      columns: { id: true, stepCount: true },
     });
 
     if (existing) {
-      await db
-        .update(hourlySteps)
-        .set({
-          stepCount: sample.steps,
-          receivedAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(hourlySteps.id, existing.id));
-      updated += 1;
+      if (existing.stepCount === sample.steps) {
+        unchanged += 1;
+      } else {
+        await db
+          .update(hourlySteps)
+          .set({
+            stepCount: sample.steps,
+            receivedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(hourlySteps.id, existing.id));
+        updated += 1;
+      }
     } else {
       await db.insert(hourlySteps).values({
         userId,
@@ -144,7 +149,7 @@ export async function importHourlyStepsFromJsonString(
     }
   }
 
-  return { inserted, updated, count: samples.length };
+  return { inserted, updated, unchanged, count: samples.length };
 }
 
 /**
@@ -153,7 +158,7 @@ export async function importHourlyStepsFromJsonString(
 export async function importHourlyStepsFromJsonFile(
   userId: string,
   absolutePath: string,
-): Promise<{ inserted: number; updated: number; count: number }> {
+): Promise<{ inserted: number; updated: number; unchanged: number; count: number }> {
   const path = expandUserPath(absolutePath);
   const text = await readFile(path, "utf8");
   return importHourlyStepsFromJsonString(userId, text);

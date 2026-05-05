@@ -37,6 +37,10 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
+# Filled Vercel paste files (often contain real keys; generate locally, never commit)
+vercel.env.import
+vercel.env.vercel-only.import
+
 # vercel
 .vercel
 

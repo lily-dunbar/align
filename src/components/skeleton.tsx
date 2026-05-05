@@ -48,7 +48,7 @@ export function DailyViewChartSkeleton() {
         </div>
       </div>
       <Skeleton className="mt-2 h-4 max-w-md" />
-      <div className="mt-4 h-72 w-full animate-pulse rounded-xl bg-gradient-to-b from-align-subtle via-zinc-200/40 to-align-subtle ring-1 ring-inset ring-black/[0.04]" />
+      <div className="mt-4 h-[22rem] min-h-[20rem] w-full animate-pulse rounded-xl bg-gradient-to-b from-align-subtle via-zinc-200/40 to-align-subtle ring-1 ring-inset ring-black/[0.04] sm:h-96" />
     </section>
   );
 }

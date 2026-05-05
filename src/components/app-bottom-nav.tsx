@@ -2,14 +2,52 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState, type ReactNode } from "react";
+
+import {
+  PATTERNS_WINDOW_CHANGED_EVENT,
+  PATTERNS_WINDOW_STORAGE_KEY,
+  parseStoredPatternWindow,
+} from "@/lib/patterns/stored-window";
+import type { PatternWindow } from "@/lib/patterns/types";
 
 function navActive(href: string, pathname: string) {
   if (href === "/") return pathname === "/";
+  if (href.startsWith("/patterns?") || href === "/patterns") {
+    return pathname === "/patterns" || pathname.startsWith("/patterns/");
+  }
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function buildInsightsHref() {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  let w: PatternWindow = "7d";
+  try {
+    const s = parseStoredPatternWindow(sessionStorage.getItem(PATTERNS_WINDOW_STORAGE_KEY));
+    if (s) w = s;
+  } catch {
+    /* private mode */
+  }
+  return `/patterns?window=${w}&timeZone=${encodeURIComponent(tz)}`;
 }
 
 export function AppBottomNav() {
   const pathname = usePathname();
+  const [insightsBump, setInsightsBump] = useState(0);
+
+  useEffect(() => {
+    function onWindowChanged() {
+      setInsightsBump((n) => n + 1);
+    }
+    window.addEventListener(PATTERNS_WINDOW_CHANGED_EVENT, onWindowChanged);
+    return () => window.removeEventListener(PATTERNS_WINDOW_CHANGED_EVENT, onWindowChanged);
+  }, []);
+
+  void insightsBump;
+
+  const insightsHref =
+    typeof window === "undefined" ? "/patterns?window=7d" : buildInsightsHref();
+
   if (
     pathname.startsWith("/sign-in") ||
     pathname.startsWith("/sign-up") ||
@@ -19,10 +57,11 @@ export function AppBottomNav() {
     return null;
   }
 
-  const items = [
+  const items: { href: string; label: string; icon: ReactNode; linkKey: string }[] = [
     {
       href: "/",
       label: "Daily",
+      linkKey: "daily",
       icon: (
         <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.35}>
           <path
@@ -34,8 +73,9 @@ export function AppBottomNav() {
       ),
     },
     {
-      href: "/patterns",
+      href: insightsHref,
       label: "Insights",
+      linkKey: "insights",
       icon: (
         <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.35}>
           <path
@@ -49,6 +89,7 @@ export function AppBottomNav() {
     {
       href: "/settings",
       label: "Settings",
+      linkKey: "settings",
       icon: (
         <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.35}>
           <path
@@ -60,7 +101,7 @@ export function AppBottomNav() {
         </svg>
       ),
     },
-  ] as const;
+  ];
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-5 pb-[calc(0.45rem+env(safe-area-inset-bottom,0px))]">
@@ -69,12 +110,13 @@ export function AppBottomNav() {
         aria-label="Main navigation"
       >
         <div className="grid grid-cols-3 gap-1">
-          {items.map(({ href, label, icon }) => {
+          {items.map(({ href, label, icon, linkKey }) => {
             const active = navActive(href, pathname);
             return (
               <Link
-                key={href}
+                key={linkKey}
                 href={href}
+                suppressHydrationWarning={linkKey === "insights"}
                 className={`flex flex-col items-center justify-center gap-0.5 rounded-full px-1 py-1.5 text-[10px] font-medium leading-none tracking-tight transition-colors duration-200 ${
                   active
                     ? "bg-align-nav-active text-align-forest shadow-[0_1px_2px_rgba(27,77,67,0.1)]"

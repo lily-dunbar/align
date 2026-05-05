@@ -152,13 +152,6 @@ export default async function SettingsPage({
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col gap-8 bg-background px-4 py-8 md:max-w-4xl md:px-8 md:py-10">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">Settings</h1>
-        <p className="text-sm text-align-muted">
-          Connect data sources, then tune display and targets.
-        </p>
-      </div>
-
       {dexcomCb === "connected" ? (
         <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
           Dexcom connected successfully.

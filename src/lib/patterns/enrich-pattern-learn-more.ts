@@ -15,12 +15,22 @@ function heuristicStem(id: string): string {
 }
 
 function baseNote(): string {
-  return `Dates use your pattern time zone. We show up to ${MAX_SAMPLE_DAYS} examples; totals in the summary cover the whole window.`;
+  return `Shown in your pattern time zone. Chips list up to ${MAX_SAMPLE_DAYS} example dates; hourly charts also trace individual days when CGM coverage allows.`;
 }
 
-function windowSummaryLine(ctx: PatternFeatureContext): string {
-  const i = ctx.inclusion;
-  return `${i.rangeStartYmd} → ${i.rangeEndYmd} · ${i.daysWithCgm} days with Dexcom data · ${i.daysWithSteps} days with steps · ${i.activitiesCount} activities`;
+const OVERLAY_DAY_CAP = 20;
+
+function pickOverlayDays(
+  curves: PatternFeatureContext["evidence"]["hourlyCurvesByDay"],
+): { ymd: string; hourMeanMgdl: (number | null)[] }[] | undefined {
+  if (!curves.length) return undefined;
+  if (curves.length <= OVERLAY_DAY_CAP) return curves;
+  const step = (curves.length - 1) / (OVERLAY_DAY_CAP - 1);
+  const out: typeof curves = [];
+  for (let i = 0; i < OVERLAY_DAY_CAP; i += 1) {
+    out.push(curves[Math.round(i * step)]!);
+  }
+  return out;
 }
 
 function hourChart(ctx: PatternFeatureContext, shade?: [number, number][]): PatternEvidenceChart {
@@ -29,7 +39,8 @@ function hourChart(ctx: PatternFeatureContext, shade?: [number, number][]): Patt
     hour,
     meanMgdl: t.hourMeanMgdl[hour] ?? null,
   }));
-  return { kind: "hour_of_day", points, shadeRanges: shade };
+  const overlayDays = pickOverlayDays(ctx.evidence.hourlyCurvesByDay);
+  return { kind: "hour_of_day", points, shadeRanges: shade, overlayDays };
 }
 
 function sampleDays(ymds: string[]): string[] {
@@ -53,11 +64,20 @@ function buildLearnMore(p: PatternInsightJson, ctx: PatternFeatureContext): Patt
   const s = ctx.sessions;
   const st = ctx.steps;
 
+  if (stem === "demo-temporal-lunch") {
+    return {
+      explanation:
+        "The thick curve is your average glucose by clock hour for the dates you selected. Faint curves are individual local days on the same 24-hour axis so you can see how repeatable the post-lunch bump is versus one-off noise. The shaded band highlights the lunch-to-early-afternoon window in this demo.",
+      contributingDaysYmd: sampleDays(ev.cgmDaysSample),
+      contributingNote: baseNote(),
+      chart: hourChart(ctx, [[11, 13]]),
+    };
+  }
+
   if (stem.startsWith("temporal-dinner-morning") || stem === "demo-temporal-dinner") {
     return {
       explanation:
-        "We average Dexcom glucose readings in local morning hours (6–11am) and compare that average to readings in early evening (6–9pm). The headline is the difference between those two averages, using only data in your selected window.",
-      windowSummary: windowSummaryLine(ctx),
+        "We compare two slices of the day: morning (6am–11am) vs early evening (6–9pm) local time. The thick line is the overall hourly average; faint lines are single days so you can see whether the morning vs evening gap is consistent or driven by a few dates.",
       contributingDaysYmd: sampleDays(ev.cgmDaysSample),
       contributingNote: baseNote(),
       chart: hourChart(ctx, [
@@ -74,8 +94,7 @@ function buildLearnMore(p: PatternInsightJson, ctx: PatternFeatureContext): Patt
   ) {
     return {
       explanation:
-        "Dexcom readings are grouped by clock hour or day-part, then we compare averages. The line is average mg/dL per hour when there are enough samples that hour.",
-      windowSummary: windowSummaryLine(ctx),
+        "Dexcom points are bucketed by hour (or wider bands when noted in the card). The thick line is the average trace for your filter; faint lines are individual days so peaks and troughs are not just one bad afternoon.",
       contributingDaysYmd: sampleDays(ev.cgmDaysSample),
       contributingNote: baseNote(),
       chart: hourChart(ctx),
@@ -85,8 +104,7 @@ function buildLearnMore(p: PatternInsightJson, ctx: PatternFeatureContext): Patt
   if (stem.startsWith("temporal-evening-630")) {
     return {
       explanation:
-        "We flag local days between 6–9pm where Dexcom data shows glucose above your high target, then summarize how often that shows up in this window. The shaded band marks those evening hours on the hourly curve.",
-      windowSummary: windowSummaryLine(ctx),
+        "We count how often evening readings sit above your high target between 6–9pm, then show where that fits on the hourly curve. Faint day-lines show whether those evenings are a steady pattern or a few outliers.",
       contributingDaysYmd: sampleDays(ev.cgmDaysSample),
       contributingNote: baseNote(),
       chart: hourChart(ctx, [[18, 21]]),
@@ -94,10 +112,26 @@ function buildLearnMore(p: PatternInsightJson, ctx: PatternFeatureContext): Patt
   }
 
   if (stem.startsWith("temporal-weekday-weekend") || stem === "demo-temporal-weekday") {
+    const tw = ctx.temporal.weekdayMeanMgdl;
+    const we = ctx.temporal.weekendMeanMgdl;
+    if (tw != null && we != null) {
+      return {
+        explanation:
+          "Every Dexcom reading in the selected window is tagged weekday (Mon–Fri) or weekend (Sat–Sun) using your pattern time zone. The chart compares the average mg/dL in each bucket—that difference is what the card headline rounds to.",
+        contributingDaysYmd: sampleDays(ev.cgmDaysSample),
+        contributingNote: baseNote(),
+        chart: {
+          kind: "two_bar",
+          left: { label: "Weekdays Mon–Fri", valueMgdl: Math.round(tw) },
+          right: { label: "Weekends Sat–Sun", valueMgdl: Math.round(we) },
+          caption:
+            "Each bar is the average of all glucose readings on those calendar days in range (not a daily average).",
+        },
+      };
+    }
     return {
       explanation:
-        "Each Dexcom reading is tagged weekday (Mon–Fri) or weekend (Sat–Sun) in your zone, then we compare average glucose for each group. The chart still shows the hourly shape for context.",
-      windowSummary: windowSummaryLine(ctx),
+        "We still split readings by weekday vs weekend in your zone, but there are not enough samples in one of the buckets yet for a fair bar comparison—try a longer window.",
       contributingDaysYmd: sampleDays(ev.cgmDaysSample),
       contributingNote: baseNote(),
       chart: hourChart(ctx),
@@ -108,7 +142,6 @@ function buildLearnMore(p: PatternInsightJson, ctx: PatternFeatureContext): Patt
     return {
       explanation:
         "There is not enough Dexcom data in this window to trust hour-by-hour averages yet. Keep syncing or choose a longer range.",
-      windowSummary: windowSummaryLine(ctx),
       contributingDaysYmd: sampleDays(ev.cgmDaysSample),
       contributingNote: baseNote(),
       chart: hourChart(ctx),
@@ -125,8 +158,7 @@ function buildLearnMore(p: PatternInsightJson, ctx: PatternFeatureContext): Patt
       ...lowYm.slice(0, Math.ceil(MAX_SAMPLE_DAYS / 2)),
     ]);
     return {
-      explanation: `We split local days by total step count (at or above ${th.toLocaleString()} vs below). For each day we use average glucose from Dexcom when that day has enough coverage. The scatterplot is one dot per qualifying day: steps on the horizontal axis, average mg/dL on the vertical axis.`,
-      windowSummary: windowSummaryLine(ctx),
+      explanation: `Each dot is one local day: total steps on the horizontal axis, that day’s average glucose on the vertical. The dashed line is ${th.toLocaleString()} steps—teal dots are at or above it, blue dots are quieter days. That split is what the headline compares (not hour-by-hour step curves).`,
       contributingDaysYmd: contrib.length ? contrib : sampleDays(ev.cgmDaysSample),
       contributingNote: baseNote(),
       chart: {
@@ -148,8 +180,7 @@ function buildLearnMore(p: PatternInsightJson, ctx: PatternFeatureContext): Patt
     const ymds = [...new Set(items.map((i) => i.startYmd))].sort();
     return {
       explanation:
-        "Each bar is one qualifying run (about 2 miles or farther): during-session average glucose minus roughly the 90 minutes before start (Dexcom). Values below zero mean blood sugar was lower during the run than right beforehand—often from activity; above zero means it rose during the effort. The card headline summarizes how large that change tends to be in this window.",
-      windowSummary: windowSummaryLine(ctx),
+        "Each bar is one qualifying run (about 2 miles or farther, when distance is logged). We take average glucose during the workout versus roughly the 90 minutes before you started. Negative bars mean glucose was lower during the effort than just before—common with cardio; positive means it rose. Bars are sorted by date in the tooltip; the card headline summarizes typical size of that swing.",
       contributingDaysYmd: sampleDays(ymds.length ? ymds : ev.cgmDaysSample),
       contributingNote: baseNote(),
       chart:
@@ -166,8 +197,7 @@ function buildLearnMore(p: PatternInsightJson, ctx: PatternFeatureContext): Patt
       const ymds = [...new Set(ev.sessionDeltas.map((d) => d.startYmd))].sort();
       return {
         explanation:
-          "We split Dexcom glucose readings into two buckets: those within about two hours of any workout start in the window, and everything else. The bars are simple averages of those two buckets—not a causal claim.",
-        windowSummary: windowSummaryLine(ctx),
+          "Two simple buckets: readings within about two hours after a workout start versus everything else in this filter. Taller bar = higher average glucose in that bucket. Movement, meals, and timing mix together here, so use this as a descriptive split, not proof of cause.",
         contributingDaysYmd: sampleDays(ymds.length ? ymds : ev.cgmDaysSample),
         contributingNote: baseNote(),
         chart: {
@@ -188,8 +218,7 @@ function buildLearnMore(p: PatternInsightJson, ctx: PatternFeatureContext): Patt
     const ymds = [...new Set(ev.sessionDeltas.map((d) => d.startYmd))].sort();
     return {
       explanation:
-        "For each run-like workout we compare average Dexcom glucose during the session to the average in ~90 minutes before you started (when we have enough readings in both slices).",
-      windowSummary: windowSummaryLine(ctx),
+        "Same before-vs-during comparison as the long-run card, but including shorter sessions when distance or type still looks run-like. Each bar is one workout; hover for date and label.",
       contributingDaysYmd: sampleDays(ymds.length ? ymds : ev.cgmDaysSample),
       contributingNote: baseNote(),
       chart:
@@ -205,7 +234,6 @@ function buildLearnMore(p: PatternInsightJson, ctx: PatternFeatureContext): Patt
         stem.startsWith("sess-none")
           ? "No workouts with a start time fell in this rolling window, so we cannot score movement-linked glucose yet."
           : "Workouts exist but we rarely had Dexcom data both shortly before and during a start, so the before-vs-during comparison is still thin.",
-      windowSummary: windowSummaryLine(ctx),
       contributingDaysYmd: sampleDays(ev.cgmDaysSample),
       contributingNote: baseNote(),
       chart: hourChart(ctx),
@@ -215,8 +243,7 @@ function buildLearnMore(p: PatternInsightJson, ctx: PatternFeatureContext): Patt
   if (p.type === "Temporal") {
     return {
       explanation:
-        "This insight comes from grouping Dexcom glucose by clock hour (local time) and comparing averages across your selected range.",
-      windowSummary: windowSummaryLine(ctx),
+        "Dexcom readings are averaged by clock hour in your time zone for the range you picked. The thick curve is that average; faint lines are individual days overlaid so you can judge whether the pattern is repeatable.",
       contributingDaysYmd: sampleDays(ev.cgmDaysSample),
       contributingNote: baseNote(),
       chart: hourChart(ctx),
@@ -232,8 +259,7 @@ function buildLearnMore(p: PatternInsightJson, ctx: PatternFeatureContext): Patt
     const ymds = [...new Set(ev.sessionDeltas.map((d) => d.startYmd))].sort();
     return {
       explanation:
-        "We look at Dexcom glucose around logged Strava or manual workouts in this window—chiefly before versus during sessions when the data supports it.",
-      windowSummary: windowSummaryLine(ctx),
+        "Where Dexcom has enough coverage before and during a logged workout, we plot the glucose change for that session. Bars below zero usually mean glucose fell during the effort versus the minutes leading up to it.",
       contributingDaysYmd: sampleDays(ymds.length ? ymds : ev.cgmDaysSample),
       contributingNote: baseNote(),
       chart:
@@ -245,8 +271,7 @@ function buildLearnMore(p: PatternInsightJson, ctx: PatternFeatureContext): Patt
 
   return {
     explanation:
-      "Align compares averages over your rolling window. The chart uses the same underlying stats as the headline, regardless of whether the text came from our model or built-in rules.",
-    windowSummary: windowSummaryLine(ctx),
+      "This chart echoes the same numbers as the card above: hourly averages with optional per-day overlays, or session deltas, depending on the insight type.",
     contributingDaysYmd: sampleDays(ev.cgmDaysSample),
     contributingNote: baseNote(),
     chart: hourChart(ctx),

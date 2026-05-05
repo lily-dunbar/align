@@ -1,9 +1,10 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte, inArray } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 import { db } from "@/db";
 import { sleepWindows } from "@/db/schema";
+import { parseSleepRecurrenceMeta } from "@/lib/manual/sleep-recurrence";
 
 type UpdateSleepBody = {
   sleepStart?: string;
@@ -55,13 +56,53 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await context.params;
+  const url = new URL(request.url);
+  const scope = url.searchParams.get("scope");
+
+  if (scope === "future") {
+    const [base] = await db
+      .select({
+        id: sleepWindows.id,
+        sleepStart: sleepWindows.sleepStart,
+        notes: sleepWindows.notes,
+      })
+      .from(sleepWindows)
+      .where(and(eq(sleepWindows.id, id), eq(sleepWindows.userId, userId)))
+      .limit(1);
+    if (!base) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    const meta = parseSleepRecurrenceMeta(base.notes);
+    if (!meta?.seriesId) {
+      return NextResponse.json(
+        { error: "This sleep entry is not part of a recurring series." },
+        { status: 400 },
+      );
+    }
+
+    const from = base.sleepStart;
+    const candidates = await db.query.sleepWindows.findMany({
+      where: and(eq(sleepWindows.userId, userId), gte(sleepWindows.sleepStart, from)),
+      columns: { id: true, notes: true },
+    });
+    const ids = candidates
+      .filter((r) => parseSleepRecurrenceMeta(r.notes)?.seriesId === meta.seriesId)
+      .map((r) => r.id);
+    if (ids.length === 0) return NextResponse.json({ ok: true, deletedCount: 0 });
+
+    const deleted = await db
+      .delete(sleepWindows)
+      .where(and(eq(sleepWindows.userId, userId), inArray(sleepWindows.id, ids)))
+      .returning({ id: sleepWindows.id });
+    return NextResponse.json({ ok: true, deletedCount: deleted.length });
+  }
+
   const [deleted] = await db
     .delete(sleepWindows)
     .where(and(eq(sleepWindows.id, id), eq(sleepWindows.userId, userId)))

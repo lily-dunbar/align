@@ -1,5 +1,12 @@
-import Link from "next/link";
+"use client";
 
+import Link from "next/link";
+import { useEffect } from "react";
+
+import {
+  PATTERNS_WINDOW_CHANGED_EVENT,
+  PATTERNS_WINDOW_STORAGE_KEY,
+} from "@/lib/patterns/stored-window";
 import type { PatternWindow } from "@/lib/patterns/types";
 
 const WINDOWS: { id: PatternWindow; label: string }[] = [
@@ -18,6 +25,21 @@ export function PatternRangeFilters({
   const href = (w: PatternWindow) =>
     `/patterns?window=${w}&timeZone=${encodeURIComponent(timeZone)}`;
 
+  function persistWindow(w: PatternWindow) {
+    try {
+      sessionStorage.setItem(PATTERNS_WINDOW_STORAGE_KEY, w);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event(PATTERNS_WINDOW_CHANGED_EVENT));
+      }
+    } catch {
+      /* private mode / quota */
+    }
+  }
+
+  useEffect(() => {
+    persistWindow(active);
+  }, [active]);
+
   return (
     <div
       className="flex flex-wrap gap-2"
@@ -33,6 +55,7 @@ export function PatternRangeFilters({
             aria-selected={selected}
             tabIndex={selected ? 0 : -1}
             href={href(id)}
+            onClick={() => persistWindow(id)}
             className={
               selected
                 ? "rounded-full bg-align-forest px-4 py-2 text-sm font-medium text-white shadow-sm shadow-black/10"

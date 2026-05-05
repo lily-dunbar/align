@@ -36,6 +36,9 @@ const ACTIVE_DAY_STEPS_THRESHOLD = 7000;
 const MIN_DAYS_PER_ACTIVITY_STEP_BUCKET = 3;
 /** Run-like sessions with distance ≥ this (meters ≈ 2 mi) for long-run Δ stats. */
 const LONG_RUN_METERS_THRESHOLD = 2 * 1609.34;
+/** Max per-day curves shipped for pattern learn-more overlays (keeps payloads & charts readable). */
+const MAX_HOURLY_CURVE_DAYS = 24;
+const MIN_SAMPLES_PER_HOUR_PER_DAY = 1;
 
 function mean(numbers: number[]): number | null {
   if (!numbers.length) return null;
@@ -76,6 +79,43 @@ function isRunLikeManual(workoutType: string): boolean {
   const s = workoutType.toLowerCase();
   if (!s.trim()) return true;
   return /run|walk|ride|bike|hike|cardio|sport|swim|elliptical|strength|yoga|rowing/.test(s);
+}
+
+function buildHourlyCurvesByDay(
+  glucosePoints: GlucosePoint[],
+  timeZone: string,
+): { ymd: string; hourMeanMgdl: (number | null)[] }[] {
+  if (glucosePoints.length === 0) return [];
+  const byDay = new Map<string, GlucosePoint[]>();
+  for (const p of glucosePoints) {
+    const ymd = formatYmdInZone(p.observedAt, timeZone);
+    let arr = byDay.get(ymd);
+    if (!arr) {
+      arr = [];
+      byDay.set(ymd, arr);
+    }
+    arr.push(p);
+  }
+  let ymds = [...byDay.keys()].sort();
+  if (ymds.length > MAX_HOURLY_CURVE_DAYS) {
+    const step = (ymds.length - 1) / (MAX_HOURLY_CURVE_DAYS - 1);
+    const picked = new Set<string>();
+    for (let i = 0; i < MAX_HOURLY_CURVE_DAYS; i++) {
+      picked.add(ymds[Math.round(i * step)]!);
+    }
+    ymds = [...picked].sort();
+  }
+  return ymds.map((ymd) => {
+    const pts = byDay.get(ymd)!;
+    const hourBuckets: number[][] = Array.from({ length: 24 }, () => []);
+    for (const p of pts) {
+      hourBuckets[localHourH23(p.observedAt, timeZone)].push(p.mgdl);
+    }
+    const hourMeanMgdl = hourBuckets.map((vals) =>
+      vals.length >= MIN_SAMPLES_PER_HOUR_PER_DAY ? mean(vals) : null,
+    );
+    return { ymd, hourMeanMgdl };
+  });
 }
 
 function duringWindowEnd(start: Date, movingTimeSec: number | null): Date {
@@ -532,6 +572,8 @@ export async function loadPatternFeatureContext(
     activitiesCount,
   };
 
+  const hourlyCurvesByDay = buildHourlyCurvesByDay(glucosePoints, timeZone);
+
   const evidence = {
     dailyGlucoseSteps: dayRows.map((r) => ({
       ymd: r.ymd,
@@ -545,6 +587,7 @@ export async function loadPatternFeatureContext(
       startYmd: r.startYmd,
     })),
     cgmDaysSample: [...glucoseByDay.keys()].sort(),
+    hourlyCurvesByDay,
   };
 
   return {

@@ -20,7 +20,7 @@ export async function PatternsTakeawaysSection({
       <div className="mb-5 flex flex-col gap-4 border-b border-align-border-soft pb-5 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
-            Takeaways
+            Insights
           </h2>
           <p className="mt-1.5 text-sm text-zinc-600">Generated for the range and timezone above.</p>
         </div>

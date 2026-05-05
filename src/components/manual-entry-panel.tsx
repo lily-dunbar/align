@@ -3,6 +3,9 @@
 import { startTransition, useEffect, useMemo, useState } from "react";
 
 import { Skeleton } from "@/components/skeleton";
+import type { SleepRecurrenceFreq } from "@/lib/manual/sleep-recurrence";
+import { parseSleepRecurrenceMeta } from "@/lib/manual/sleep-recurrence";
+import { METERS_PER_MILE } from "@/lib/distance-units";
 import { DAY_DATA_CHANGED_EVENT, OPEN_MANUAL_MODAL_EVENT } from "@/lib/day-view-events";
 import { useResolvedDayYmd } from "@/lib/use-resolved-day-ymd";
 
@@ -47,10 +50,10 @@ const WORKOUT_TYPES: { key: string; emoji: string; label: string }[] = [
 ];
 
 const FOOD_PRESETS: { emoji: string; title: string; hint: string; carbsHint?: string }[] = [
-  { emoji: "🥗", title: "Light meal", hint: "30m", carbsHint: "25" },
-  { emoji: "🍎", title: "Snack / fruit", hint: "45m", carbsHint: "15" },
-  { emoji: "🍬", title: "Quick carbs", hint: "1h", carbsHint: "30" },
-  { emoji: "🍕", title: "Heavier meal", hint: "2h", carbsHint: "60" },
+  { emoji: "🍃", title: "Low impact", hint: "30m", carbsHint: "20" },
+  { emoji: "⚡", title: "Fast acting", hint: "1h", carbsHint: "20" },
+  { emoji: "🕒", title: "Med acting", hint: "2h", carbsHint: "40" },
+  { emoji: "🐌", title: "Slow acting", hint: "3h", carbsHint: "60" },
 ];
 
 function toIsoFromDateTime(date: string, time: string) {
@@ -97,13 +100,19 @@ function formatHeaderDate(ymd: string) {
   });
 }
 
+function recurrenceLabel(notes: string | null): string | null {
+  const meta = parseSleepRecurrenceMeta(notes);
+  if (!meta) return null;
+  return meta.freq === "daily" ? "Repeats daily" : "Repeats weekly";
+}
+
 function notifyDayDataChanged() {
   window.dispatchEvent(new CustomEvent(DAY_DATA_CHANGED_EVENT));
 }
 
 function metersToMiles(m: number | null): string {
   if (m == null || !Number.isFinite(m)) return "";
-  return (m / 1609.344).toFixed(2);
+  return (m / METERS_PER_MILE).toFixed(2);
 }
 
 function computePacePerMi(startTime: string, endTime: string, miles: number): string {
@@ -155,6 +164,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
     wakeDate: dateYmd,
     wakeTime: "07:00",
     recurring: false,
+    recurrenceFreq: "weekly" as SleepRecurrenceFreq,
   });
 
   const [workoutForm, setWorkoutForm] = useState({
@@ -191,6 +201,8 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
         ...s,
         bedDate: prevYmd(resolvedDateYmd),
         wakeDate: resolvedDateYmd,
+        recurring: false,
+        recurrenceFreq: "weekly",
       }));
     });
   }, [resolvedDateYmd]);
@@ -266,6 +278,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
         wakeDate: resolvedDateYmd,
         wakeTime: "07:00",
         recurring: false,
+        recurrenceFreq: "weekly",
       });
       setIsOpen(true);
     }
@@ -308,6 +321,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
       wakeDate: resolvedDateYmd,
       wakeTime: "07:00",
       recurring: false,
+      recurrenceFreq: "weekly",
     });
     setIsOpen(true);
   }
@@ -320,7 +334,9 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
       body: JSON.stringify({
         sleepStart: toIsoFromDateTime(sleepForm.bedDate, sleepForm.bedTime),
         sleepEnd: toIsoFromDateTime(sleepForm.wakeDate, sleepForm.wakeTime),
-        notes: sleepForm.recurring ? "repeat weekly" : null,
+        recurrence: sleepForm.recurring
+          ? { enabled: true, freq: sleepForm.recurrenceFreq }
+          : { enabled: false },
       }),
     });
     const json = (await resp.json()) as { item?: SleepRow; error?: string };
@@ -334,6 +350,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
       wakeDate: resolvedDateYmd,
       wakeTime: "07:00",
       recurring: false,
+      recurrenceFreq: "weekly",
     });
     await loadAll();
     notifyDayDataChanged();
@@ -359,8 +376,22 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
     notifyDayDataChanged();
   }
 
-  async function deleteSleep(id: string) {
-    await fetch(`/api/manual/sleep/${id}`, { method: "DELETE" });
+  async function deleteSleep(item: SleepRow) {
+    const recur = parseSleepRecurrenceMeta(item.notes);
+    let url = `/api/manual/sleep/${item.id}`;
+    if (recur?.seriesId) {
+      const thisDay = window.confirm(
+        "Delete only this sleep entry?\n\nPress OK for just this day, or Cancel for more options.",
+      );
+      if (!thisDay) {
+        const future = window.confirm(
+          "Delete this entry and all future repeated sleep entries in this series?",
+        );
+        if (!future) return;
+        url += "?scope=future";
+      }
+    }
+    await fetch(url, { method: "DELETE" });
     await loadAll();
     notifyDayDataChanged();
   }
@@ -381,7 +412,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
           : null,
         distanceMeters:
           miles != null && Number.isFinite(miles) && miles > 0
-            ? Math.round(miles * 1609.344)
+            ? Math.round(miles * METERS_PER_MILE)
             : null,
         pace: paceSubmit,
         notes: workoutForm.notes || null,
@@ -658,8 +689,29 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                           setSleepForm((s) => ({ ...s, recurring: e.target.checked }))
                         }
                       />
-                      <FieldLabel>Repeat weekly (recurring)</FieldLabel>
+                      <FieldLabel>Repeats</FieldLabel>
                     </label>
+                    {sleepForm.recurring ? (
+                      <div className="space-y-1.5">
+                        <FieldLabel>Repeat cadence</FieldLabel>
+                        <select
+                          className={inputClass()}
+                          value={sleepForm.recurrenceFreq}
+                          onChange={(e) =>
+                            setSleepForm((s) => ({
+                              ...s,
+                              recurrenceFreq: e.target.value as SleepRecurrenceFreq,
+                            }))
+                          }
+                        >
+                          <option value="daily">Daily</option>
+                          <option value="weekly">Weekly</option>
+                        </select>
+                        <p className="text-xs text-zinc-500">
+                          You can delete a single day later, or delete all future repeats from any entry.
+                        </p>
+                      </div>
+                    ) : null}
                     <button
                       type="button"
                       className="w-full rounded-full bg-align-forest py-3 text-sm font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted active:scale-[0.99]"
@@ -976,8 +1028,8 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                                     minute: "2-digit",
                                   })}
                                 </p>
-                                {s.notes?.includes("repeat") ? (
-                                  <p className="text-xs text-align-forest-muted">Repeats weekly</p>
+                                {recurrenceLabel(s.notes) ? (
+                                  <p className="text-xs text-align-forest-muted">{recurrenceLabel(s.notes)}</p>
                                 ) : null}
                               </div>
                               <div className="flex gap-2">
@@ -991,7 +1043,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                                 <button
                                   type="button"
                                   className="rounded-lg bg-white px-2 py-1 text-xs text-red-600 ring-1 ring-red-200"
-                                  onClick={() => void deleteSleep(s.id)}
+                                  onClick={() => void deleteSleep(s)}
                                 >
                                   Delete
                                 </button>
@@ -1109,7 +1161,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                                         ? {
                                             ...r,
                                             distanceMeters: e.target.value
-                                              ? Math.round(Number(e.target.value) * 1609.344)
+                                              ? Math.round(Number(e.target.value) * METERS_PER_MILE)
                                               : null,
                                           }
                                         : r,

@@ -13,55 +13,95 @@ import type { UserPreferences } from "@/lib/user-display-preferences";
 
 function stubTemporal(): PatternFeatureContext["temporal"] {
   const hourMeanMgdl = Array.from({ length: 24 }, (_, h) => {
-    if (h >= 22 || h < 5) return 98 + (h % 4);
-    if (h >= 17) return 124 + Math.round((h - 17) * 1.4);
-    return 108 + Math.round(Math.sin((h / 24) * Math.PI * 2) * 18);
+    if (h >= 22 || h < 5) return 102 + (h % 3);
+    if (h === 12) return 232;
+    if (h === 11 || h === 13) return 188;
+    if (h >= 17 && h <= 18) return 118;
+    if (h >= 19 && h <= 21) return 134;
+    return 114 + Math.round(Math.sin((h / 24) * Math.PI * 2) * 10);
   });
   return {
     readingsUsed: 4021,
     hourMeanMgdl,
     hourSampleCount: Array(24).fill(167),
-    peakHour: 20,
-    troughHour: 3,
-    peakMeanMgdl: 156,
-    troughMeanMgdl: 94,
-    morningMeanMgdl: 112,
-    afternoonMeanMgdl: 118,
-    eveningMeanMgdl: 136,
-    nightMeanMgdl: 99,
-    weekdayMeanMgdl: 116,
-    weekendMeanMgdl: 109,
+    peakHour: 12,
+    troughHour: 4,
+    peakMeanMgdl: 232,
+    troughMeanMgdl: 96,
+    morningMeanMgdl: 118,
+    afternoonMeanMgdl: 132,
+    eveningMeanMgdl: 130,
+    nightMeanMgdl: 102,
+    weekdayMeanMgdl: 124,
+    weekendMeanMgdl: 112,
     weekdaySampleCount: 2780,
-    weekendSampleCount: 1241,
-    eveningHigh630to21DaysCount: 5,
-    dinnerEveningMeanMgdl: 136,
-    dinnerEveningVsMorningDeltaMgdl: 24,
+    weekendSampleCount: 841,
+    eveningHigh630to21DaysCount: 8,
+    dinnerEveningMeanMgdl: 142,
+    dinnerEveningVsMorningDeltaMgdl: 28,
   };
 }
 
 function stubSteps(prefs: UserPreferences): PatternFeatureContext["steps"] {
   return {
-    daysWithStepsAndGlucose: 19,
-    medianDailySteps: 9200,
+    daysWithStepsAndGlucose: 21,
+    medianDailySteps: 9800,
     meanDailyMgdlHighStepDays: 118,
-    meanDailyMgdlLowStepDays: 112,
-    daysHighStepBucket: 10,
+    meanDailyMgdlLowStepDays: 162,
+    daysHighStepBucket: 12,
     daysLowStepBucket: 9,
-    avgDailySteps: 9050,
+    avgDailySteps: 9680,
     stepsGoalPerDay: prefs.targetStepsPerDay,
     hasHourlyStepsData: true,
-    stravaWorkoutCount: 8,
-    manualWorkoutCount: 3,
+    stravaWorkoutCount: 10,
+    manualWorkoutCount: 2,
     activeDayStepsThreshold: 7000,
-    daysMeanMgdlStepsGteThreshold: 9,
-    daysMeanMgdlStepsLtThreshold: 10,
-    meanDailyMgdlStepsGteThreshold: 108,
-    meanDailyMgdlStepsLtThreshold: 156,
-    meanMgdlDeltaLessActiveMinusActive: 48,
+    daysMeanMgdlStepsGteThreshold: 12,
+    daysMeanMgdlStepsLtThreshold: 9,
+    meanDailyMgdlStepsGteThreshold: 118,
+    meanDailyMgdlStepsLtThreshold: 162,
+    meanMgdlDeltaLessActiveMinusActive: 44,
   };
 }
 
-const LONG_RUN_METERS_DEMO = 2 * 1609.34;
+/** ~4 mi — matches demo Strava afternoon runs. */
+const FOUR_MILES_METERS = 4 * 1609.34;
+
+/** Matches `stubTemporal()` shape with small per-day jitter for overlay learn-more charts. */
+function demoBaselineHourMgdl(h: number): number {
+  if (h >= 22 || h < 5) return 102 + (h % 3);
+  if (h === 12) return 232;
+  if (h === 11 || h === 13) return 188;
+  if (h >= 17 && h <= 18) return 118;
+  if (h >= 19 && h <= 21) return 134;
+  return 114 + Math.round(Math.sin((h / 24) * Math.PI * 2) * 10);
+}
+
+function calendarYmdIsWeekend(ymd: string): boolean {
+  const [y, m, d] = ymd.split("-").map(Number);
+  if (!Number.isFinite(y)) return false;
+  const w = new Date(y, m - 1, d).getDay();
+  return w === 0 || w === 6;
+}
+
+/** Aligns learn-more overlays with day-view demo: weekends messier, short-sleep dawn bump. */
+function demoHourlyCurvesForDays(days: string[]): PatternFeatureContext["evidence"]["hourlyCurvesByDay"] {
+  return days.map((ymd, di) => {
+    const salt = ymd.split("-").reduce((acc, x) => acc + Number(x), 0) + di * 7;
+    const weekend = calendarYmdIsWeekend(ymd);
+    const shortSleep = salt % 11 < 4;
+    const chaos = (weekend ? 1.55 : 1) * (shortSleep ? 1.22 : 1);
+    const hourMeanMgdl = Array.from({ length: 24 }, (_, h) => {
+      let j = ((salt + h * 3) % 11) - 5;
+      j = Math.round(j * chaos);
+      if (weekend && h >= 9 && h <= 21) j += (salt + h * 2) % 7;
+      if (shortSleep && h >= 5 && h <= 11) j += 3 + ((salt + h) % 4);
+      const v = demoBaselineHourMgdl(h) + j;
+      return Math.max(65, Math.min(320, Math.round(v)));
+    });
+    return { ymd, hourMeanMgdl };
+  });
+}
 
 /** Inclusive calendar-day list between two `YYYY-MM-DD` strings. */
 function eachYmdInclusive(startYmd: string, endYmd: string): string[] {
@@ -86,8 +126,8 @@ function demoEvidence(rangeStartYmd: string, rangeEndYmd: string): PatternFeatur
 
   const dailyGlucoseSteps = days.map((ymd, i) => {
     const highStep = i % 2 === 0;
-    const steps = highStep ? 9200 + (i % 5) * 120 : 4200 + (i % 4) * 180;
-    const meanMgdl = highStep ? 108 + (i % 3) * 2 : 148 + (i % 4) * 2.5;
+    const steps = highStep ? 9800 + (i % 5) * 100 : 4100 + (i % 4) * 140;
+    const meanMgdl = highStep ? 116 + (i % 3) : 158 + (i % 4);
     return {
       ymd,
       meanMgdl: Math.round(meanMgdl * 10) / 10,
@@ -96,38 +136,43 @@ function demoEvidence(rangeStartYmd: string, rangeEndYmd: string): PatternFeatur
   });
 
   const sessionDeltas: PatternFeatureContext["evidence"]["sessionDeltas"] = [];
-  const runDays = days.filter((_, i) => i % 3 === 0).slice(0, 6);
+  const runDays = days.filter((_, i) => i % 2 === 0).slice(0, 8);
   runDays.forEach((ymd, runI) => {
     sessionDeltas.push({
-      deltaMgdl: Math.round((-52 - (runI % 3) * 5) * 10) / 10,
-      distanceMeters: LONG_RUN_METERS_DEMO + 400 + runI * 180,
-      label: `Run ${runI + 1}`,
+      deltaMgdl: Math.round((-78 - (runI % 4) * 4) * 10) / 10,
+      distanceMeters: FOUR_MILES_METERS + runI * 80,
+      label: `Afternoon run ${runI + 1}`,
       startYmd: ymd,
     });
   });
 
-  return { dailyGlucoseSteps, sessionDeltas, cgmDaysSample };
+  return {
+    dailyGlucoseSteps,
+    sessionDeltas,
+    cgmDaysSample,
+    hourlyCurvesByDay: demoHourlyCurvesForDays(days),
+  };
 }
 
 function stubSessions(): PatternFeatureContext["sessions"] {
   return {
-    workoutStartsCount: 11,
-    stravaWorkoutCount: 8,
-    manualWorkoutCount: 3,
-    readingsNearWorkout2h: 840,
-    readingsAwayFromWorkout2h: 3180,
-    meanMgdlNearWorkout2h: 112,
-    meanMgdlAwayFromWorkout2h: 122,
-    runLikeSessionsWithDelta: 6,
-    avgMgdlDeltaRunLike: -14,
-    avgDistanceMetersRunLike: 5200,
-    avgDurationMinutesRunLike: 41,
+    workoutStartsCount: 12,
+    stravaWorkoutCount: 10,
+    manualWorkoutCount: 2,
+    readingsNearWorkout2h: 920,
+    readingsAwayFromWorkout2h: 3100,
+    meanMgdlNearWorkout2h: 108,
+    meanMgdlAwayFromWorkout2h: 124,
+    runLikeSessionsWithDelta: 8,
+    avgMgdlDeltaRunLike: -78,
+    avgDistanceMetersRunLike: FOUR_MILES_METERS,
+    avgDurationMinutesRunLike: 52,
     dominantRunLikeLabel: "Run",
     longRunMilesThreshold: 2,
-    runLikeSessionsDeltaOverLongRunMi: 4,
-    avgMgdlDeltaRunLikeOverLongRunMi: -58,
-    deltaMgdlP25LongRunMi: -50,
-    deltaMgdlP75LongRunMi: -66,
+    runLikeSessionsDeltaOverLongRunMi: 8,
+    avgMgdlDeltaRunLikeOverLongRunMi: -78,
+    deltaMgdlP25LongRunMi: -72,
+    deltaMgdlP75LongRunMi: -88,
   };
 }
 
@@ -140,7 +185,7 @@ function stubFeatureContext(
     windowDays: labelDays,
     calendarDaysInWindow: labelDays,
     glucoseReadingsCount: 4021,
-    meanMgdl: 116,
+    meanMgdl: 124,
     tirInRangePercent: 76.4,
     tirGoalPercent: prefs.targetTirPercent,
     targetLowMgdl: prefs.targetLowMgdl,
@@ -151,10 +196,10 @@ function stubFeatureContext(
     dataCoverage: {
       glucoseReadingsCount: 4021,
       hourlyStepBucketsCount: 504,
-      manualWorkoutsCount: 3,
-      stravaActivitiesCount: 8,
+      manualWorkoutsCount: 2,
+      stravaActivitiesCount: 10,
       analysisHint:
-        "Demo — use quantified Temporal (6–9pm vs morning), Steps (≥7k day totals), Sessions (≥2 mi run deltas) when present.",
+        "Demo — highlight midday lunch glucose peak, lower means on ≥7k-step days, and ~80 mg/dL drops on ~4 mi afternoon runs (Mon/Wed/Fri in stitched days).",
     },
     inclusion: {
       rangeStartYmd: "2026-01-01",
@@ -167,6 +212,7 @@ function stubFeatureContext(
       dailyGlucoseSteps: [],
       sessionDeltas: [],
       cgmDaysSample: [],
+      hourlyCurvesByDay: [],
     },
   };
 }
@@ -174,39 +220,39 @@ function stubFeatureContext(
 function demoPatterns(threshold: number): PatternInsightJson[] {
   const base: PatternInsightJson[] = [
     {
-      id: "demo-temporal-dinner",
-      title: "Often ~24 mg/dL higher between 6–9pm than mornings",
+      id: "demo-temporal-lunch",
+      title: "Sharp climb around lunch, often peaking near 250 mg/dL",
       description:
-        "Evening glucose from Dexcom averages about two dozen mg/dL above your morning slice in this sample window — dinner timing or basal patterns may be involved; confirm with your clinician.",
+        "Dexcom by hour-of-day shows your clearest bump after lunch, with peaks clustering around ~noon in this demo window — think carbs, timing, or prebolus; align with food logs and your care team.",
       type: "Temporal",
-      confidencePercent: 86,
+      confidencePercent: 88,
       linkedSources: ["Dexcom"],
     },
     {
       id: "demo-steps-threshold",
-      title: "Often ~48 mg/dL lower on days over 7,000 steps",
+      title: "Often ~44 mg/dL lower on days over 7,000 steps",
       description:
-        "Mean daily glucose runs lower on higher-step days than on quieter days here — movement, meals, and sleep all differ; use this as a conversation starter, not a rule.",
+        "In this demo, typical daily glucose is markedly lower when total steps clear ~7k — commute + afternoon movement line up with steadier days; meals and sleep still co-vary, so treat as a signal to explore.",
       type: "Steps",
-      confidencePercent: 80,
+      confidencePercent: 82,
       linkedSources: ["Dexcom", "Apple Steps"],
     },
     {
       id: "demo-sessions-longrun",
-      title: "Large BG drop on runs",
+      title: "Large BG drop on ~4 mi afternoon runs",
       description:
-        "Blood sugars tend to drop by about 50–66 mg/dL on runs over 2 mi in this demo window (Dexcom during the workout vs roughly the 90 minutes before start). Fueling and adrenaline matter; compare with your own logs and clinician if needed.",
+        "Strava-linked runs (~50 min, ~4 mi) pair with Dexcom drops of about 72–88 mg/dL in-window (workout vs pre-start). Fueling and IOB matter — use as a pattern preview, not medical advice.",
       type: "Sessions",
-      confidencePercent: 82,
+      confidencePercent: 84,
       linkedSources: ["Dexcom", "Strava"],
     },
     {
       id: "demo-temporal-weekday",
-      title: "Runs ~7 mg/dL higher on weekdays than weekends",
+      title: "Runs ~12 mg/dL higher on weekdays than weekends",
       description:
-        "Weekday averages edge higher — routine or stress may contribute. A longer window tightens whether this holds.",
+        "Weekday work rhythm (steps, lunch out, stress) pushes averages up vs lighter weekends in this stitched window. More days will show whether it sticks.",
       type: "Temporal",
-      confidencePercent: 71,
+      confidencePercent: 72,
       linkedSources: ["Dexcom"],
     },
   ];

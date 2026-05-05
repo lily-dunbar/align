@@ -7,11 +7,13 @@ const WINDOW_DAYS: Record<PatternWindow, number> = {
 };
 
 export function isPatternWindow(value: string | undefined): value is PatternWindow {
-  return value === "7d" || value === "30d" || value === "90d";
+  const v = value?.trim().toLowerCase();
+  return v === "7d" || v === "30d" || v === "90d";
 }
 
 export function parsePatternWindow(param: string | undefined): PatternWindow {
-  if (isPatternWindow(param)) return param;
+  const p = param?.trim().toLowerCase();
+  if (p === "7d" || p === "30d" || p === "90d") return p;
   return "7d";
 }
 

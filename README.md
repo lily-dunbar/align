@@ -98,6 +98,17 @@ Public URL options:
 - **Best:** deploy on Vercel and use `https://<your-domain>/api/ingest/steps/:token`
 - **Local testing:** use a tunnel (Cloudflare Tunnel / ngrok) and point Shortcut to that HTTPS URL
 
+### Automatic iCloud file pull at 8AM / 8PM (local server)
+
+If you run Align on your own Mac/server (not Vercel cron), you can auto-import the Shortcuts
+iCloud file twice daily by setting:
+
+- `SHORTCUTS_AUTO_SYNC_USER_ID=<your Clerk user id>`
+- Optional `SHORTCUTS_AUTO_SYNC_ENABLED=true` (default true when unset)
+- Optional `SHORTCUTS_AUTO_SYNC_RUN_ON_STARTUP=true`
+
+The scheduler runs in the Next.js Node process and imports at 8:00 and 20:00 local server time.
+
 #### Apple Shortcut JSON contract
 
 Use this contract for requests sent to:

@@ -35,13 +35,20 @@ type DayApiResponse = {
   streams: {
     glucose: Array<{ observedAt: string; mgdl: number }>;
     hourlySteps: Array<{ bucketStart: string; stepCount: number }>;
-    manualWorkouts: Array<{ id: string; startedAt: string; endedAt: string | null }>;
+    manualWorkouts: Array<{
+      id: string;
+      startedAt: string;
+      endedAt: string | null;
+      workoutType?: string | null;
+    }>;
     /** Strava-synced sessions for the day (same layer as manual workouts). */
     stravaActivities?: Array<{
       id: string;
       startAt: string;
       endAt: string | null;
       durationSec: number | null;
+      sportType?: string | null;
+      activityType?: string | null;
     }>;
     sleepWindows: Array<{ id: string; sleepStart: string; sleepEnd: string }>;
     foodEntries: Array<{ id: string; eatenAt: string; title: string }>;
@@ -55,24 +62,20 @@ type ChartDisplayPreferences = {
   showFood: boolean;
 };
 
-/** Full calendar day vs last 12 hours (ending at “now” for today; last 12h of day for past dates). */
+/** Full calendar day vs rolling last 12 hours anchored to current time. */
 type TimelineWindow = "24h" | "12h";
 
 function timelineDomain24h(): [number, number] {
   return [0, 24];
 }
 
-function timelineDomain12h(viewedYmd: string, timeZone: string, now: Date): [number, number] {
-  const todayYmd = getLocalCalendarYmd(now, timeZone);
-  if (viewedYmd === todayYmd) {
-    let end = Math.min(24, toLocalHourFraction(now.toISOString(), timeZone));
-    if (end < 1 / 120) {
-      end = 1 / 120;
-    }
-    const start = Math.max(0, end - 12);
-    return [start, end];
+function timelineDomain12h(_viewedYmd: string, timeZone: string, now: Date): [number, number] {
+  let end = Math.min(24, toLocalHourFraction(now.toISOString(), timeZone));
+  if (end < 1 / 120) {
+    end = 1 / 120;
   }
-  return [12, 24];
+  const start = end - 12;
+  return [start, end];
 }
 
 function timelineDomain(
@@ -117,17 +120,14 @@ function timelineTicks(
 
 function timelineSubtitle(
   window: TimelineWindow,
-  viewedYmd: string,
-  timeZone: string,
-  now: Date,
+  _viewedYmd: string,
+  _timeZone: string,
+  _now: Date,
 ): string {
   if (window === "24h") {
     return "Full calendar day (local)";
   }
-  if (viewedYmd === getLocalCalendarYmd(now, timeZone)) {
-    return "Last 12 hours through current time";
-  }
-  return "Noon–midnight (last 12 hours of this day)";
+  return "Last 12 hours through current time";
 }
 
 type ChartRow = {
@@ -145,9 +145,70 @@ const STEP_Y_MAX = GLUCOSE_FLOOR;
 /** Smallest fraction of the step band used when an hour has steps (improves visibility for low counts). */
 const STEP_BAR_MIN_FRACTION = 0.14;
 
-/** Sleep window shading — `align-card-steps` blue; only overlaps real sleep vs viewed day (handles midnight crossing). */
-const SLEEP_BAND_FILL = "#d4e3f6";
+/** Sleep window shading; only overlaps real sleep vs viewed day (handles midnight crossing). */
+const SLEEP_BAND_FILL = "#DAE6E5";
 const SLEEP_BAND_FILL_OPACITY = 0.38;
+
+/** Food / carb absorption window (local clock) — not persisted; title heuristics only. */
+const FOOD_BAND_FILL = "#EFF1CD";
+const FOOD_BAND_FILL_OPACITY = 0.4;
+
+/** Rough absorption window for shaded band (hours from first bite). */
+function foodAbsorptionDurationHours(title: string): number {
+  const t = title.toLowerCase();
+  if (t.includes("low impact")) return 0.5;
+  if (t.includes("fast acting")) return 1;
+  if (t.includes("med acting")) return 2;
+  if (t.includes("slow acting")) return 3;
+  if (t.includes("pizza")) return 2;
+  if (/snack|fruit|yogurt|apple|cracker|bar\b/.test(t)) return 1;
+  if (/pasta|burger|fried|burrito|lasagna|rice bowl/.test(t)) return 2.5;
+  return 2;
+}
+
+/**
+ * Clips [eatenAt, eatenAt + duration) to the viewed local day and timeline domain (same idea as sleep bands).
+ */
+function foodReferenceIntervalsForViewedDay(
+  viewedYmd: string,
+  eatenAtIso: string,
+  durationHours: number,
+  timeZone: string,
+  xDomain: [number, number],
+): Array<{ x1: number; x2: number }> {
+  const dayStart = startOfLocalDayInZone(viewedYmd, timeZone);
+  const dayEndExcl = endOfLocalDayExclusiveInZone(viewedYmd, timeZone);
+  const s = new Date(eatenAtIso).getTime();
+  const e = s + durationHours * 3_600_000;
+  if (!Number.isFinite(s) || !Number.isFinite(e) || e <= s) return [];
+
+  const overlap0 = Math.max(s, dayStart.getTime());
+  const overlap1 = Math.min(e, dayEndExcl.getTime());
+  if (overlap0 >= overlap1) return [];
+
+  const msPerHour = 3_600_000;
+  const x1 = (overlap0 - dayStart.getTime()) / msPerHour;
+  const x2 = (overlap1 - dayStart.getTime()) / msPerHour;
+
+  const [dmin, dmax] = xDomain;
+  const lo = Math.max(x1, dmin);
+  const hi = Math.min(x2, dmax);
+  if (lo >= hi - 1e-6) return [];
+  return [{ x1: lo, x2: hi }];
+}
+
+function foodBandAndIconCenter(
+  f: { eatenAt: string; title: string },
+  viewedYmd: string,
+  timeZone: string,
+  xDomain: [number, number],
+): { segs: Array<{ x1: number; x2: number }>; iconX: number | null } {
+  const hrs = foodAbsorptionDurationHours(f.title);
+  const segs = foodReferenceIntervalsForViewedDay(viewedYmd, f.eatenAt, hrs, timeZone, xDomain);
+  const iconX =
+    segs.length > 0 ? (segs[0]!.x1 + segs[0]!.x2) / 2 : null;
+  return { segs, iconX };
+}
 
 function toLocalHourFraction(iso: string, timeZone: string) {
   const date = new Date(iso);
@@ -236,10 +297,32 @@ function activityBandXRange(
   return { x1, x2 };
 }
 
+function sleepBandIconX(seg: { x1: number; x2: number }): number {
+  return (seg.x1 + seg.x2) / 2;
+}
+
+function manualWorkoutEmoji(workoutType?: string | null): string {
+  const t = (workoutType ?? "").toLowerCase();
+  if (t.includes("run")) return "🏃";
+  if (t.includes("bike") || t.includes("ride") || t.includes("cycle")) return "🚴";
+  if (t.includes("swim")) return "🏊";
+  if (t.includes("walk") || t.includes("hike")) return "🚶";
+  return "🏃";
+}
+
+function stravaActivityEmoji(sportType?: string | null, activityType?: string | null): string {
+  const t = `${sportType ?? ""} ${activityType ?? ""}`.toLowerCase();
+  if (t.includes("run")) return "🏃";
+  if (t.includes("ride") || t.includes("bike") || t.includes("cycle")) return "🚴";
+  if (t.includes("swim")) return "🏊";
+  if (t.includes("walk") || t.includes("hike")) return "🚶";
+  return "🏃";
+}
+
 function hourLabel(v: number) {
   const totalMinutes = Math.round(v * 60);
-  const hour24 = Math.floor(totalMinutes / 60) % 24;
-  const minutes = totalMinutes % 60;
+  const hour24 = ((Math.floor(totalMinutes / 60) % 24) + 24) % 24;
+  const minutes = ((totalMinutes % 60) + 60) % 60;
   const suffix = hour24 >= 12 ? "PM" : "AM";
   const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
   if (minutes === 0) return `${hour12}${suffix}`;
@@ -444,9 +527,9 @@ export function DailyViewChart({ dateYmd }: Props) {
       <p className="mt-1.5 text-xs text-align-muted">
         {tz} · {timelineHelp}
       </p>
-      <div className="mt-4 h-72 w-full min-w-0 rounded-xl bg-gradient-to-b from-align-subtle/90 to-align-canvas/40 p-2 ring-1 ring-inset ring-black/[0.03]">
-        <ResponsiveContainer width="100%" height="100%" minWidth={280} minHeight={220}>
-          <ComposedChart data={chartData} margin={{ top: 10, right: 12, bottom: 8, left: 4 }}>
+      <div className="mt-4 h-[22rem] min-h-[20rem] w-full min-w-0 rounded-xl bg-gradient-to-b from-align-subtle/90 to-align-canvas/40 p-2 ring-1 ring-inset ring-black/[0.03] sm:h-96">
+        <ResponsiveContainer width="100%" height="100%" minWidth={280} minHeight={260}>
+          <ComposedChart data={chartData} margin={{ top: 36, right: 12, bottom: 8, left: 4 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e4ebea" />
             {showSteps ? (
               <ReferenceArea
@@ -460,14 +543,15 @@ export function DailyViewChart({ dateYmd }: Props) {
               />
             ) : null}
             {showSleep && payload.streams.sleepWindows.length > 0
-              ? payload.streams.sleepWindows.flatMap((s) =>
-                  sleepReferenceIntervalsForViewedDay(
+              ? payload.streams.sleepWindows.flatMap((s) => {
+                  const segs = sleepReferenceIntervalsForViewedDay(
                     resolvedDateYmd,
                     s.sleepStart,
                     s.sleepEnd,
                     tz,
                     xDomain,
-                  ).map((seg, i) => (
+                  );
+                  const areas = segs.map((seg, i) => (
                     <ReferenceArea
                       key={`sleep-${s.id}-${i}`}
                       x1={seg.x1}
@@ -478,58 +562,122 @@ export function DailyViewChart({ dateYmd }: Props) {
                       fillOpacity={SLEEP_BAND_FILL_OPACITY}
                       ifOverflow="extendDomain"
                     />
-                  )),
-                )
-              : null}
-            {showActivity
-              ? payload.streams.manualWorkouts.map((w) => {
-                  const { x1, x2 } = activityBandXRange(w.startedAt, w.endedAt, tz);
-                  return (
-                    <ReferenceArea
-                      key={`workout-${w.id}`}
-                      x1={x1}
-                      x2={x2}
-                      y1={GLUCOSE_FLOOR}
-                      y2={300}
-                      fill="#f9a8a4"
-                      fillOpacity={0.16}
-                      ifOverflow="extendDomain"
+                  ));
+                  const icons = segs.map((seg, i) => (
+                    <ReferenceLine
+                      key={`sleep-icon-${s.id}-${i}`}
+                      x={sleepBandIconX(seg)}
+                      stroke="transparent"
+                      strokeWidth={0}
+                      zIndex={35}
+                      label={{
+                        value: "😴",
+                        position: "top",
+                        fontSize: 24,
+                      }}
                     />
-                  );
+                  ));
+                  return [...areas, ...icons];
                 })
               : null}
             {showActivity
-              ? (payload.streams.stravaActivities ?? []).map((a) => {
+              ? payload.streams.manualWorkouts.flatMap((w) => {
+                  const { x1, x2 } = activityBandXRange(w.startedAt, w.endedAt, tz);
+                  const iconX = (x1 + x2) / 2;
+                  return [
+                      <ReferenceArea
+                        key={`workout-${w.id}`}
+                        x1={x1}
+                        x2={x2}
+                        y1={GLUCOSE_FLOOR}
+                        y2={300}
+                        fill="#f9a8a4"
+                        fillOpacity={0.16}
+                        ifOverflow="extendDomain"
+                      />,
+                      <ReferenceLine
+                        key={`workout-icon-${w.id}`}
+                        x={iconX}
+                        stroke="transparent"
+                        strokeWidth={0}
+                        zIndex={35}
+                        label={{
+                          value: manualWorkoutEmoji(w.workoutType),
+                          position: "top",
+                          fontSize: 24,
+                        }}
+                      />
+                    ];
+                })
+              : null}
+            {showActivity
+              ? (payload.streams.stravaActivities ?? []).flatMap((a) => {
                   const { x1, x2 } = activityBandXRange(a.startAt, stravaActivityEndIso(a), tz);
-                  return (
-                    <ReferenceArea
-                      key={`strava-${a.id}`}
-                      x1={x1}
-                      x2={x2}
-                      y1={GLUCOSE_FLOOR}
-                      y2={300}
-                      fill="#f9a8a4"
-                      fillOpacity={0.16}
-                      ifOverflow="extendDomain"
-                    />
-                  );
+                  const iconX = (x1 + x2) / 2;
+                  return [
+                      <ReferenceArea
+                        key={`strava-${a.id}`}
+                        x1={x1}
+                        x2={x2}
+                        y1={GLUCOSE_FLOOR}
+                        y2={300}
+                        fill="#f9a8a4"
+                        fillOpacity={0.16}
+                        ifOverflow="extendDomain"
+                      />,
+                      <ReferenceLine
+                        key={`strava-icon-${a.id}`}
+                        x={iconX}
+                        stroke="transparent"
+                        strokeWidth={0}
+                        zIndex={35}
+                        label={{
+                          value: stravaActivityEmoji(a.sportType, a.activityType),
+                          position: "top",
+                          fontSize: 24,
+                        }}
+                      />
+                    ];
                 })
               : null}
             {showFood
-              ? payload.streams.foodEntries.map((f) => (
-                  <ReferenceLine
-                    key={`food-${f.id}`}
-                    x={toLocalHourFraction(f.eatenAt, tz)}
-                    stroke="#fb923c"
-                    strokeDasharray="3 6"
-                    label={{
-                      value: "🍴",
-                      position: "top",
-                      fill: "#ea580c",
-                      fontSize: 19,
-                    }}
-                  />
-                ))
+              ? payload.streams.foodEntries.flatMap((f) => {
+                  const { segs, iconX } = foodBandAndIconCenter(
+                    f,
+                    resolvedDateYmd,
+                    tz,
+                    xDomain,
+                  );
+                  const areas = segs.map((seg, i) => (
+                    <ReferenceArea
+                      key={`food-band-${f.id}-${i}`}
+                      x1={seg.x1}
+                      x2={seg.x2}
+                      y1={GLUCOSE_FLOOR}
+                      y2={300}
+                      fill={FOOD_BAND_FILL}
+                      fillOpacity={FOOD_BAND_FILL_OPACITY}
+                      ifOverflow="extendDomain"
+                    />
+                  ));
+                  const icon =
+                    iconX != null ? (
+                      <ReferenceLine
+                        key={`food-icon-${f.id}`}
+                        x={iconX}
+                        stroke="transparent"
+                        strokeWidth={0}
+                        zIndex={40}
+                        label={{
+                          value: "🍽",
+                          position: "top",
+                          fill: "#166534",
+                          fontSize: 24,
+                        }}
+                      />
+                    ) : null;
+                  return [...areas, icon].filter((n) => n != null);
+                })
               : null}
 
             <ReferenceLine y={low} stroke="#c9a227" strokeDasharray="6 4" strokeOpacity={0.85} />

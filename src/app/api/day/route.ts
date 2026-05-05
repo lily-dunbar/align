@@ -11,6 +11,7 @@ import {
   manualWorkouts,
   sleepWindows,
 } from "@/db/schema";
+import { metersToMilesDisplay } from "@/lib/distance-units";
 import { buildDemoDayApiPayload } from "@/lib/demo/build-demo-day-api";
 import { isDemoDataActive } from "@/lib/demo/is-demo-data-active";
 import { dayBoundsUtcForYmd, todayBoundsUtc } from "@/lib/day-bounds";
@@ -162,6 +163,7 @@ export async function GET(request: NextRequest) {
     (sum, a) => sum + (a.distanceMeters ?? 0),
     0,
   );
+  const stravaDistanceMi = metersToMilesDisplay(stravaDistanceMeters, 1);
 
   const sleepMinutes = Math.round(
     sleep.reduce((sum, s) => {
@@ -197,6 +199,7 @@ export async function GET(request: NextRequest) {
       sleepMinutes,
       stravaActivitiesCount: stravaActivities.length,
       stravaDistanceMeters,
+      stravaDistanceMi,
     },
     streams: {
       glucose,

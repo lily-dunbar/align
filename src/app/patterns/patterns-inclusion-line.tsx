@@ -1,6 +1,7 @@
 import { PatternWindowInclusionSummary } from "@/components/pattern-window-inclusion-summary";
 import { getPatternsFeatureJsonForIso } from "@/lib/patterns/feature-json";
 import type { PatternWindow } from "@/lib/patterns/types";
+import { windowLabelDays } from "@/lib/patterns/window";
 
 export async function PatternsInclusionLine({
   userId,
@@ -18,6 +19,7 @@ export async function PatternsInclusionLine({
     <PatternWindowInclusionSummary
       inclusion={feature.featureContext.inclusion}
       timeZone={timeZone}
+      labelDays={windowLabelDays(window)}
     />
   );
 }

@@ -17,6 +17,8 @@ export type PatternEvidenceChart =
       points: { hour: number; meanMgdl: number | null }[];
       /** Optional [startHour, endHour] bands to shade (e.g. morning vs evening). */
       shadeRanges?: [number, number][];
+      /** Per local calendar day, hourly means — faint lines overlaid behind `points` aggregate. */
+      overlayDays?: { ymd: string; hourMeanMgdl: (number | null)[] }[];
     }
   | {
       kind: "scatter_steps_mgdl";
@@ -31,14 +33,16 @@ export type PatternEvidenceChart =
       kind: "two_bar";
       left: { label: string; valueMgdl: number };
       right: { label: string; valueMgdl: number };
+      /** Shown under the chart (e.g. what the two buckets represent). */
+      caption?: string;
     }
   | { kind: "empty" };
 
 export type PatternLearnMore = {
   /** Plain-language steps Align took (no medical advice). */
   explanation: string;
-  /** Window line for context. */
-  windowSummary: string;
+  /** Optional window line — omitted when it only repeats the page filter. */
+  windowSummary?: string;
   /** Sample calendar dates backing the pattern (local), newest last. */
   contributingDaysYmd: string[];
   /** How to read the sample vs totals. */
@@ -175,6 +179,8 @@ export type PatternEvidenceBundle = {
   sessionDeltas: PatternSessionDeltaPoint[];
   /** Sample of local days with any Dexcom data (for disclosure lists). */
   cgmDaysSample: string[];
+  /** Per local day: hourly mean glucose (24 values) for learn-more overlays; empty if no CGM. */
+  hourlyCurvesByDay: { ymd: string; hourMeanMgdl: (number | null)[] }[];
 };
 
 export type PatternFeatureContext = {

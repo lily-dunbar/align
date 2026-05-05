@@ -44,10 +44,6 @@ export default async function PatternsPage({
 
   return (
     <main className="mx-auto flex min-h-[100dvh] w-full max-w-6xl flex-col gap-8 bg-background px-4 py-8 md:px-8 md:py-10">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">Insights</h1>
-      </header>
-
       {userId && needsTzSync ? (
         <Suspense fallback={null}>
           <PatternsTimezoneSync window={window} />

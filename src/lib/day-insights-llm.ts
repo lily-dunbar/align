@@ -54,7 +54,8 @@ Rules:
 - Output ONLY valid JSON with shape: {"insights":[{"title":"short headline","detail":"1–3 sentences"}]}
 - **1–4 additional insights** (not 5). Do not repeat calendar puns or the same "daily spark" tone — be specific to the JSON streams (steps shape, workouts, food, sleep, CGM).
 - If almost no extra telemetry beyond what the spark already covers, return {"insights":[]} (an empty array is OK).
-- Titles ≤ 100 chars; details ≤ 500 chars each.`,
+- Titles ≤ 100 chars; details ≤ 500 chars each.
+- aggregates.stravaDistanceMi is total Strava distance that day in **miles** (not km).`,
       messages: [
         {
           role: "user",

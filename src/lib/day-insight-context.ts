@@ -12,6 +12,7 @@ import {
   sleepWindows,
 } from "@/db/schema";
 import { dayBoundsUtcForYmd, todayBoundsUtc } from "@/lib/day-bounds";
+import { metersToMilesDisplay } from "@/lib/distance-units";
 import { mergeHourlyStepsPreferShortcutsFile } from "@/lib/merge-hourly-steps-sources";
 import { calculateTir } from "@/lib/tir";
 import { getUserPreferences } from "@/lib/user-display-preferences";
@@ -55,7 +56,8 @@ export type DayInsightSnapshot = {
     totalSteps: number;
     manualWorkoutsCount: number;
     stravaActivitiesCount: number;
-    stravaDistanceKm: number;
+    /** Sum of Strava activity distances for the day, in miles (for prompts / copy). */
+    stravaDistanceMi: number;
     foodEntriesCount: number;
     foodCarbsGrams: number;
     sleepMinutes: number;
@@ -154,6 +156,7 @@ export async function loadDayInsightSnapshot(
 
   const foodCarbs = food.reduce((sum, f) => sum + (f.carbsGrams ?? 0), 0);
   const stravaDistanceMeters = stravaActivities.reduce((sum, a) => sum + (a.distanceMeters ?? 0), 0);
+  const stravaDistanceMi = metersToMilesDisplay(stravaDistanceMeters, 1);
 
   return {
     dateYmd,
@@ -173,7 +176,7 @@ export async function loadDayInsightSnapshot(
       totalSteps,
       manualWorkoutsCount: workouts.length,
       stravaActivitiesCount: stravaActivities.length,
-      stravaDistanceKm: Math.round((stravaDistanceMeters / 1000) * 10) / 10,
+      stravaDistanceMi,
       foodEntriesCount: food.length,
       foodCarbsGrams: Math.round(foodCarbs * 10) / 10,
       sleepMinutes,

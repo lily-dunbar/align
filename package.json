@@ -15,7 +15,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "seed:demo": "tsx scripts/seed-demo.ts"
+    "seed:demo": "tsx scripts/seed-demo.ts",
+    "env:vercel-only-import": "node scripts/gen-vercel-only-import.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.92.0",

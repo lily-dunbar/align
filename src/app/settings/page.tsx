@@ -100,9 +100,34 @@ export default async function SettingsPage({
   const lastStepsRow = await db.query.hourlySteps.findFirst({
     where: eq(hourlySteps.userId, userId),
     orderBy: [desc(hourlySteps.receivedAt)],
-    columns: { receivedAt: true },
+    columns: {
+      receivedAt: true,
+      bucketStart: true,
+      stepCount: true,
+      source: true,
+    },
   });
   const lastStepsAt = lastStepsRow?.receivedAt.toISOString() ?? null;
+  const lastStepsStored =
+    lastStepsRow != null
+      ? {
+          bucketStartIso: lastStepsRow.bucketStart.toISOString(),
+          stepCount: lastStepsRow.stepCount,
+          source: lastStepsRow.source,
+          receivedAtIso: lastStepsRow.receivedAt.toISOString(),
+        }
+      : null;
+  const recentStepRows = await db.query.hourlySteps.findMany({
+    where: eq(hourlySteps.userId, userId),
+    orderBy: [desc(hourlySteps.receivedAt)],
+    limit: 12,
+    columns: {
+      bucketStart: true,
+      stepCount: true,
+      source: true,
+      receivedAt: true,
+    },
+  });
 
   const [dexcomReadingsAgg] = await db
     .select({ n: count() })
@@ -153,6 +178,13 @@ export default async function SettingsPage({
       connected: !!stepTok,
       lastIngestAt: lastStepsAt,
       stepsTotalStored: stepsTotalCount,
+      lastStored: lastStepsStored,
+      recentRows: recentStepRows.map((r) => ({
+        bucketStartIso: r.bucketStart.toISOString(),
+        stepCount: r.stepCount,
+        source: r.source,
+        receivedAtIso: r.receivedAt.toISOString(),
+      })),
     },
   };
 

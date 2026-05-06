@@ -19,6 +19,19 @@ function formatWhen(iso: string | null) {
   }
 }
 
+function stepsSourceLabel(source: string) {
+  switch (source) {
+    case "apple_shortcuts":
+      return "Shortcut POST";
+    case "shortcuts_file":
+      return "Shortcuts file sync";
+    case "demo_preview":
+      return "Demo preview";
+    default:
+      return source;
+  }
+}
+
 export type IntegrationSnapshot = {
   dexcom: {
     connected: boolean;
@@ -36,6 +49,19 @@ export type IntegrationSnapshot = {
     connected: boolean;
     lastIngestAt: string | null;
     stepsTotalStored: number;
+    /** Row with max receivedAt in hourly_steps (any source). */
+    lastStored: {
+      bucketStartIso: string;
+      stepCount: number;
+      source: string;
+      receivedAtIso: string;
+    } | null;
+    recentRows: Array<{
+      bucketStartIso: string;
+      stepCount: number;
+      source: string;
+      receivedAtIso: string;
+    }>;
   };
 };
 
@@ -50,6 +76,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
   const [notice, setNotice] = useState<string | null>(null);
   const [stepsIngest, setStepsIngest] = useState<StepsIngestInfo | null>(null);
   const [copyFlash, setCopyFlash] = useState(false);
+  const [stepsIngestModalOpen, setStepsIngestModalOpen] = useState(false);
   const [stepsSetupOpen, setStepsSetupOpen] = useState(false);
   const stepsSetupPanelId = useId();
   const [stepsClientHints, setStepsClientHints] = useState<{
@@ -510,8 +537,21 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                   <>
                     Personal Shortcut POST URL is active — each user has a different path after{" "}
                     <code className="rounded bg-zinc-100 px-1 text-[10px]">/api/ingest/steps/</code>.
-                    DB: {initial.steps.stepsTotalStored.toLocaleString()} step-count sum · Last ingest:{" "}
-                    {formatWhen(initial.steps.lastIngestAt)}
+                    DB: {initial.steps.stepsTotalStored.toLocaleString()} step-count sum · Last write:{" "}
+                    {formatWhen(initial.steps.lastIngestAt)}.
+                    {initial.steps.lastStored ? (
+                      <span className="mt-2 block text-zinc-600">
+                        <span className="font-medium text-zinc-800">Latest stored hour:</span>{" "}
+                        {initial.steps.lastStored.stepCount.toLocaleString()} steps · UTC bucket start{" "}
+                        {formatWhen(initial.steps.lastStored.bucketStartIso)} ·{" "}
+                        {stepsSourceLabel(initial.steps.lastStored.source)} · received{" "}
+                        {formatWhen(initial.steps.lastStored.receivedAtIso)}
+                      </span>
+                    ) : (
+                      <span className="mt-2 block text-amber-800/90">
+                        No hourly step rows yet — run your Shortcut (POST) or pull a local file (dev).
+                      </span>
+                    )}
                   </>
                 ) : (
                   <>
@@ -539,6 +579,15 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 </button>
               ) : (
                 <>
+                  <button
+                    type="button"
+                    title="Show latest ingested rows"
+                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
+                    disabled={busy !== null}
+                    onClick={() => setStepsIngestModalOpen(true)}
+                  >
+                    View latest ingest
+                  </button>
                   <button
                     type="button"
                     title="Loads your latest personal URL from GET /api/ingest/steps/token (same link Shortcuts uses for POST)."
@@ -704,6 +753,49 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
           ) : null}
         </div>
       </div>
+      {stepsIngestModalOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Latest ingest rows"
+          onClick={() => setStepsIngestModalOpen(false)}
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
+              <h3 className="text-sm font-semibold text-zinc-900">Latest ingest rows</h3>
+              <button
+                type="button"
+                className="rounded-md border border-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                onClick={() => setStepsIngestModalOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="max-h-[65vh] overflow-auto p-4 text-xs text-zinc-700">
+              {initial.steps.recentRows.length === 0 ? (
+                <p>No ingest rows yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {initial.steps.recentRows.map((row, idx) => (
+                    <div key={`${row.receivedAtIso}-${idx}`} className="rounded-md border border-zinc-200 p-2">
+                      <p>
+                        <span className="font-medium text-zinc-900">{row.stepCount.toLocaleString()}</span> steps
+                      </p>
+                      <p>Bucket start: {formatWhen(row.bucketStartIso)}</p>
+                      <p>Source: {stepsSourceLabel(row.source)}</p>
+                      <p>Received: {formatWhen(row.receivedAtIso)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

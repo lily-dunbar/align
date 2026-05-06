@@ -73,13 +73,13 @@ export default async function Home({ searchParams }: HomeProps) {
           <Suspense fallback={<DailyDashboardSkeleton />}>
             <DateNav initialDateYmd={selectedDateYmd} />
             <ManualEntryPanel
-              key={selectedDateYmd}
+              key={`manual-${selectedDateYmd}`}
               dateYmd={selectedDateYmd}
               showCard={false}
             />
             <DailyViewChart dateYmd={selectedDateYmd} />
             <DaySummaryCards dateYmd={selectedDateYmd} />
-            <DayInsightsPanel key={selectedDateYmd} dateYmd={selectedDateYmd} />
+            <DayInsightsPanel key={`insights-${selectedDateYmd}`} dateYmd={selectedDateYmd} />
           </Suspense>
         </>
       ) : null}

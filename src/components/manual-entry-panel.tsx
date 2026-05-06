@@ -14,7 +14,10 @@ import {
   OPEN_MANUAL_MODAL_EVENT,
   type OpenManualModalDetail,
 } from "@/lib/day-view-events";
-import { inferMealPeriodFromLocalTime } from "@/lib/infer-meal-period";
+import {
+  inferMealPeriodFromLocalTime,
+  type InferredMealPeriod,
+} from "@/lib/infer-meal-period";
 import {
   isYmdSameDayInZone,
   utcIsoToZonedDateInput,
@@ -181,6 +184,20 @@ function inputClass(short?: boolean) {
     "focus:border-align-forest focus:ring-2 focus:ring-align-forest/20",
     short ? "tabular-nums" : "",
   ].join(" ");
+}
+
+function suggestedTimeForMealPeriod(period: InferredMealPeriod): string {
+  switch (period) {
+    case "breakfast":
+      return "08:00";
+    case "lunch":
+      return "12:30";
+    case "dinner":
+      return "18:30";
+    case "snack":
+    default:
+      return "15:00";
+  }
 }
 
 export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
@@ -365,7 +382,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
 
   const foodFormMealPreview = useMemo(() => {
     const iso = zonedDateTimeToUtcIso(foodForm.date, foodForm.time, effectiveTz);
-    return inferMealPeriodFromLocalTime(iso, effectiveTz).label;
+    return inferMealPeriodFromLocalTime(iso, effectiveTz);
   }, [foodForm.date, foodForm.time, effectiveTz]);
 
   const sleepForDate = useMemo(
@@ -569,6 +586,8 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
       await loadAll();
       notifyDayDataChanged();
       showSuccessToast("Activity saved");
+      setIsOpen(false);
+      setFocusedEdit(null);
     } finally {
       setActionBusy(null);
     }
@@ -632,6 +651,8 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
       await loadAll();
       notifyDayDataChanged();
       showSuccessToast("Activity updated");
+      setIsOpen(false);
+      setFocusedEdit(null);
     } finally {
       setActionBusy(null);
     }
@@ -915,30 +936,19 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                   <>
                     <div className="space-y-2">
                       <FieldLabel>Type</FieldLabel>
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                        {WORKOUT_TYPES.map((t) => {
-                          const sel = workoutForm.workoutType === t.key;
-                          return (
-                            <button
-                              key={t.key}
-                              type="button"
-                              aria-pressed={sel}
-                              onClick={() =>
-                                setWorkoutForm((s) => ({ ...s, workoutType: t.key }))
-                              }
-                              className={[
-                                "flex flex-col items-center gap-1 rounded-2xl border-2 py-3 text-sm font-medium transition duration-150",
-                                sel
-                                  ? "border-align-forest bg-align-nav-active text-align-forest shadow-sm shadow-black/5"
-                                  : "border-align-border/80 bg-white text-zinc-600 hover:border-align-border hover:bg-align-subtle active:scale-[0.98]",
-                              ].join(" ")}
-                            >
-                              <span className="text-2xl leading-none">{t.emoji}</span>
-                              {t.label}
-                            </button>
-                          );
-                        })}
-                      </div>
+                      <select
+                        className={inputClass()}
+                        value={workoutForm.workoutType}
+                        onChange={(e) =>
+                          setWorkoutForm((s) => ({ ...s, workoutType: e.target.value }))
+                        }
+                      >
+                        {WORKOUT_TYPES.map((t) => (
+                          <option key={t.key} value={t.key}>
+                            {t.emoji} {t.label}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
@@ -1018,38 +1028,50 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                         onChange={(e) => setFoodForm((s) => ({ ...s, time: e.target.value }))}
                       />
                       <p className="text-xs leading-relaxed text-amber-950/90">
-                        <span className="font-semibold">Looks like {foodFormMealPreview}</span>
+                        <span className="font-semibold">Looks like {foodFormMealPreview.label}</span>
                         <span className="font-normal text-zinc-600">
                           {" "}
                           — logged using your day timezone (Settings).
                         </span>
                       </p>
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-align-forest underline underline-offset-2 hover:text-align-forest-muted"
+                        onClick={() =>
+                          setFoodForm((s) => ({
+                            ...s,
+                            time: suggestedTimeForMealPeriod(foodFormMealPreview.period),
+                          }))
+                        }
+                      >
+                        Use {foodFormMealPreview.label.toLowerCase()} time
+                      </button>
                     </div>
                     <div className="rounded-2xl border border-dashed border-align-border/90 bg-align-subtle/40 p-4">
                       <FieldLabel>Type (optional)</FieldLabel>
                       <p className="mb-3 text-xs text-zinc-500">
-                        Quick picks — typical glucose curve length as a hint, not medical advice.
+                        Typical glucose curve length as a hint, not medical advice.
                       </p>
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      <select
+                        className={inputClass()}
+                        value={foodForm.foodTypeTag ?? ""}
+                        onChange={(e) => {
+                          const nextTag = (e.target.value || null) as FoodTypeTag | null;
+                          const preset = FOOD_PRESETS.find((p) => p.typeTag === nextTag);
+                          setFoodForm((s) => ({
+                            ...s,
+                            foodTypeTag: nextTag,
+                            carbsGrams: preset?.carbsHint ?? s.carbsGrams,
+                          }));
+                        }}
+                      >
+                        <option value="">No type selected</option>
                         {FOOD_PRESETS.map((p) => (
-                          <button
-                            key={p.title}
-                            type="button"
-                            className="flex flex-col items-center gap-0.5 rounded-xl border border-align-border/80 bg-white py-3 text-center shadow-sm transition hover:border-align-forest/40 hover:bg-align-subtle/50 active:scale-[0.98]"
-                            onClick={() =>
-                              setFoodForm((s) => ({
-                                ...s,
-                                foodTypeTag: p.typeTag,
-                                carbsGrams: p.carbsHint ?? s.carbsGrams,
-                              }))
-                            }
-                          >
-                            <span className="text-2xl">{p.emoji}</span>
-                            <span className="text-[10px] font-semibold text-align-forest">{p.title}</span>
-                            <span className="text-[10px] font-medium text-align-muted">{p.hint}</span>
-                          </button>
+                          <option key={p.typeTag} value={p.typeTag}>
+                            {p.emoji} {p.title} ({p.hint})
+                          </option>
                         ))}
-                      </div>
+                      </select>
                     </div>
                     <div className="space-y-1.5">
                       <FieldLabel>Type tag (optional)</FieldLabel>
@@ -1229,28 +1251,19 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                     <div className="space-y-5 rounded-2xl border border-align-border/80 bg-white p-4 shadow-sm">
                       <div className="space-y-2">
                         <FieldLabel>Type</FieldLabel>
-                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                          {WORKOUT_TYPES.map((t) => {
-                            const sel = workoutForm.workoutType === t.key;
-                            return (
-                              <button
-                                key={t.key}
-                                type="button"
-                                aria-pressed={sel}
-                                onClick={() => setWorkoutForm((s) => ({ ...s, workoutType: t.key }))}
-                                className={[
-                                  "flex flex-col items-center gap-1 rounded-2xl border-2 py-3 text-sm font-medium transition duration-150",
-                                  sel
-                                    ? "border-align-forest bg-align-nav-active text-align-forest shadow-sm shadow-black/5"
-                                    : "border-align-border/80 bg-white text-zinc-600 hover:border-align-border hover:bg-align-subtle active:scale-[0.98]",
-                                ].join(" ")}
-                              >
-                                <span className="text-2xl leading-none">{t.emoji}</span>
-                                {t.label}
-                              </button>
-                            );
-                          })}
-                        </div>
+                        <select
+                          className={inputClass()}
+                          value={workoutForm.workoutType}
+                          onChange={(e) =>
+                            setWorkoutForm((s) => ({ ...s, workoutType: e.target.value }))
+                          }
+                        >
+                          {WORKOUT_TYPES.map((t) => (
+                            <option key={t.key} value={t.key}>
+                              {t.emoji} {t.label}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="space-y-1.5">
@@ -1361,38 +1374,50 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                           onChange={(e) => setFoodForm((s) => ({ ...s, time: e.target.value }))}
                         />
                         <p className="text-xs leading-relaxed text-amber-950/90">
-                          <span className="font-semibold">Looks like {foodFormMealPreview}</span>
+                          <span className="font-semibold">Looks like {foodFormMealPreview.label}</span>
                           <span className="font-normal text-zinc-600">
                             {" "}
                             — logged using your day timezone (Settings).
                           </span>
                         </p>
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-align-forest underline underline-offset-2 hover:text-align-forest-muted"
+                          onClick={() =>
+                            setFoodForm((s) => ({
+                              ...s,
+                              time: suggestedTimeForMealPeriod(foodFormMealPreview.period),
+                            }))
+                          }
+                        >
+                          Use {foodFormMealPreview.label.toLowerCase()} time
+                        </button>
                       </div>
                       <div className="rounded-2xl border border-dashed border-align-border/90 bg-align-subtle/40 p-4">
                         <FieldLabel>Type (optional)</FieldLabel>
                         <p className="mb-3 text-xs text-zinc-500">
-                          Quick picks — typical glucose curve length as a hint, not medical advice.
+                          Typical glucose curve length as a hint, not medical advice.
                         </p>
-                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        <select
+                          className={inputClass()}
+                          value={foodForm.foodTypeTag ?? ""}
+                          onChange={(e) => {
+                            const nextTag = (e.target.value || null) as FoodTypeTag | null;
+                            const preset = FOOD_PRESETS.find((p) => p.typeTag === nextTag);
+                            setFoodForm((s) => ({
+                              ...s,
+                              foodTypeTag: nextTag,
+                              carbsGrams: preset?.carbsHint ?? s.carbsGrams,
+                            }));
+                          }}
+                        >
+                          <option value="">No type selected</option>
                           {FOOD_PRESETS.map((p) => (
-                            <button
-                              key={p.title}
-                              type="button"
-                              className="flex flex-col items-center gap-0.5 rounded-xl border border-align-border/80 bg-white py-3 text-center shadow-sm transition hover:border-align-forest/40 hover:bg-align-subtle/50 active:scale-[0.98]"
-                              onClick={() =>
-                                setFoodForm((s) => ({
-                                  ...s,
-                                  foodTypeTag: p.typeTag,
-                                  carbsGrams: p.carbsHint ?? s.carbsGrams,
-                                }))
-                              }
-                            >
-                              <span className="text-2xl">{p.emoji}</span>
-                              <span className="text-[10px] font-semibold text-align-forest">{p.title}</span>
-                              <span className="text-[10px] font-medium text-align-muted">{p.hint}</span>
-                            </button>
+                            <option key={p.typeTag} value={p.typeTag}>
+                              {p.emoji} {p.title} ({p.hint})
+                            </option>
                           ))}
-                        </div>
+                        </select>
                       </div>
                       <div className="space-y-1.5">
                         <FieldLabel>Type tag (optional)</FieldLabel>

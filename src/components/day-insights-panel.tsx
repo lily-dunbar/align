@@ -113,16 +113,20 @@ function addMinutes(iso: string, minutes: number) {
 }
 
 function foodWindowMinutes(title: string, notes?: string | null) {
+  const MAX_FOOD_IMPACT_MINUTES = 180;
   const tagged = parseFoodTypeTag(notes);
-  if (tagged) return Math.round(foodTypeAbsorptionHours(tagged) * 60);
+  if (tagged) {
+    return Math.min(MAX_FOOD_IMPACT_MINUTES, Math.round(foodTypeAbsorptionHours(tagged) * 60));
+  }
   const t = title.toLowerCase();
   if (t.includes("low impact")) return 30;
   if (t.includes("fast acting")) return 60;
   if (t.includes("med acting")) return 120;
   if (t.includes("slow acting")) return 180;
+  if (t.includes("pizza")) return 120;
   if (/snack|fruit|yogurt|apple|cracker|bar\b/.test(t)) return 60;
-  if (/pasta|burger|fried|burrito|lasagna|rice bowl|pizza/.test(t)) return 150;
-  return 120;
+  if (/pasta|burger|fried|burrito|lasagna|rice bowl/.test(t)) return 150;
+  return Math.min(MAX_FOOD_IMPACT_MINUTES, 120);
 }
 
 function inferredFoodTypeLabel(title: string, notes?: string | null): string {

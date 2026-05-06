@@ -60,106 +60,140 @@ export default async function SettingsPage({
   const shareUiDismissed =
     shareDexcom &&
     cookieStore.get(DEXCOM_SHARE_UI_HIDDEN_COOKIE)?.value === userId;
-  const dexcomRow = await db.query.dexcomTokens.findFirst({
-    where: eq(dexcomTokens.userId, userId),
-    columns: { userId: true },
-  });
-  const stravaRow = await db.query.stravaTokens.findFirst({
-    where: eq(stravaTokens.userId, userId),
-    columns: { userId: true },
-  });
-  const stepTok = await db.query.stepIngestTokens.findFirst({
-    where: eq(stepIngestTokens.userId, userId),
-    columns: { token: true },
-  });
+  let dexcomRow: { userId: string } | undefined;
+  let stravaRow: { userId: string } | undefined;
+  let stepTok: { token: string } | undefined;
+  let lastDexcomAt: string | null = null;
+  let lastStravaAt: string | null = null;
+  let lastStepsAt: string | null = null;
+  let lastStepsStored: {
+    bucketStartIso: string;
+    stepCount: number;
+    source: string;
+    receivedAtIso: string;
+  } | null = null;
+  let recentStepRows: Array<{
+    bucketStart: Date;
+    stepCount: number;
+    source: string;
+    receivedAt: Date;
+  }> = [];
+  let dexcomReadingCount = 0;
+  let stravaActivityCount = 0;
+  let stepsTotalCount = 0;
 
-  const lastDexcomGlucoseRow =
-    dexcomRow || shareDexcom
-      ? await db.query.glucoseReadings.findFirst({
-          where: and(
-            eq(glucoseReadings.userId, userId),
-            eq(glucoseReadings.source, "dexcom"),
-          ),
-          orderBy: [desc(glucoseReadings.updatedAt)],
-          columns: { updatedAt: true },
-        })
+  try {
+    dexcomRow = await db.query.dexcomTokens.findFirst({
+      where: eq(dexcomTokens.userId, userId),
+      columns: { userId: true },
+    });
+    stravaRow = await db.query.stravaTokens.findFirst({
+      where: eq(stravaTokens.userId, userId),
+      columns: { userId: true },
+    });
+    stepTok = await db.query.stepIngestTokens.findFirst({
+      where: eq(stepIngestTokens.userId, userId),
+      columns: { token: true },
+    });
+
+    const lastDexcomGlucoseRow =
+      dexcomRow || shareDexcom
+        ? await db.query.glucoseReadings.findFirst({
+            where: and(
+              eq(glucoseReadings.userId, userId),
+              eq(glucoseReadings.source, "dexcom"),
+            ),
+            orderBy: [desc(glucoseReadings.updatedAt)],
+            columns: { updatedAt: true },
+          })
+        : null;
+    lastDexcomAt = lastDexcomGlucoseRow?.updatedAt.toISOString() ?? null;
+
+    lastStravaAt = stravaRow
+      ? (
+          await db.query.activities.findFirst({
+            where: and(eq(activities.userId, userId), eq(activities.provider, "strava")),
+            orderBy: [desc(activities.updatedAt)],
+            columns: { updatedAt: true },
+          })
+        )?.updatedAt.toISOString() ?? null
       : null;
-  const lastDexcomAt = lastDexcomGlucoseRow?.updatedAt.toISOString() ?? null;
 
-  const lastStravaAt = stravaRow
-    ? (
-        await db.query.activities.findFirst({
-          where: and(eq(activities.userId, userId), eq(activities.provider, "strava")),
-          orderBy: [desc(activities.updatedAt)],
-          columns: { updatedAt: true },
-        })
-      )?.updatedAt.toISOString() ?? null
-    : null;
+    const lastStepsRow = await db.query.hourlySteps.findFirst({
+      where: eq(hourlySteps.userId, userId),
+      orderBy: [desc(hourlySteps.receivedAt)],
+      columns: {
+        receivedAt: true,
+        bucketStart: true,
+        stepCount: true,
+        source: true,
+      },
+    });
+    lastStepsAt = lastStepsRow?.receivedAt.toISOString() ?? null;
+    lastStepsStored =
+      lastStepsRow != null
+        ? {
+            bucketStartIso: lastStepsRow.bucketStart.toISOString(),
+            stepCount: lastStepsRow.stepCount,
+            source: lastStepsRow.source,
+            receivedAtIso: lastStepsRow.receivedAt.toISOString(),
+          }
+        : null;
+    recentStepRows = await db.query.hourlySteps.findMany({
+      where: eq(hourlySteps.userId, userId),
+      orderBy: [desc(hourlySteps.receivedAt)],
+      limit: 12,
+      columns: {
+        bucketStart: true,
+        stepCount: true,
+        source: true,
+        receivedAt: true,
+      },
+    });
 
-  const lastStepsRow = await db.query.hourlySteps.findFirst({
-    where: eq(hourlySteps.userId, userId),
-    orderBy: [desc(hourlySteps.receivedAt)],
-    columns: {
-      receivedAt: true,
-      bucketStart: true,
-      stepCount: true,
-      source: true,
-    },
-  });
-  const lastStepsAt = lastStepsRow?.receivedAt.toISOString() ?? null;
-  const lastStepsStored =
-    lastStepsRow != null
-      ? {
-          bucketStartIso: lastStepsRow.bucketStart.toISOString(),
-          stepCount: lastStepsRow.stepCount,
-          source: lastStepsRow.source,
-          receivedAtIso: lastStepsRow.receivedAt.toISOString(),
-        }
-      : null;
-  const recentStepRows = await db.query.hourlySteps.findMany({
-    where: eq(hourlySteps.userId, userId),
-    orderBy: [desc(hourlySteps.receivedAt)],
-    limit: 12,
-    columns: {
-      bucketStart: true,
-      stepCount: true,
-      source: true,
-      receivedAt: true,
-    },
-  });
+    const [dexcomReadingsAgg] = await db
+      .select({ n: count() })
+      .from(glucoseReadings)
+      .where(
+        and(eq(glucoseReadings.userId, userId), eq(glucoseReadings.source, "dexcom")),
+      );
 
-  const [dexcomReadingsAgg] = await db
-    .select({ n: count() })
-    .from(glucoseReadings)
-    .where(
-      and(eq(glucoseReadings.userId, userId), eq(glucoseReadings.source, "dexcom")),
-    );
+    const [stravaActivityAgg] = await db
+      .select({ n: count() })
+      .from(activities)
+      .where(and(eq(activities.userId, userId), eq(activities.provider, "strava")));
 
-  const [stravaActivityAgg] = await db
-    .select({ n: count() })
-    .from(activities)
-    .where(and(eq(activities.userId, userId), eq(activities.provider, "strava")));
+    const [stepsSumAgg] = await db
+      .select({ total: sum(hourlySteps.stepCount) })
+      .from(hourlySteps)
+      .where(eq(hourlySteps.userId, userId));
 
-  const [stepsSumAgg] = await db
-    .select({ total: sum(hourlySteps.stepCount) })
-    .from(hourlySteps)
-    .where(eq(hourlySteps.userId, userId));
-
-  const dexcomReadingCount = Number(dexcomReadingsAgg?.n ?? 0);
-  const stravaActivityCount = Number(stravaActivityAgg?.n ?? 0);
-  const stepsTotalCount = Number(stepsSumAgg?.total ?? 0);
+    dexcomReadingCount = Number(dexcomReadingsAgg?.n ?? 0);
+    stravaActivityCount = Number(stravaActivityAgg?.n ?? 0);
+    stepsTotalCount = Number(stepsSumAgg?.total ?? 0);
+  } catch (error) {
+    console.warn("Settings data unavailable while DB is overloaded.", error);
+  }
 
   const showDeveloperSettings = isDeveloperSettingsEnabled();
 
-  const userPrefs = await getUserPreferences(userId);
+  let userPrefs = await getUserPreferences(userId);
   const dexcomConnected = !!dexcomRow || (shareDexcom && !shareUiDismissed);
   const showDexcomBackfillPrompt =
     dexcomConnected && !userPrefs.dexcomBackfill90PromptDismissed;
 
-  const developerPrefsRow = await db.query.userDisplayPreferences.findFirst({
-    where: eq(userDisplayPreferences.userId, userId),
-    columns: { developerDemoMode: true, onboardingCompleted: true },
-  });
+  let developerPrefsRow:
+    | { developerDemoMode: boolean | null; onboardingCompleted: boolean | null }
+    | undefined;
+  try {
+    developerPrefsRow = await db.query.userDisplayPreferences.findFirst({
+      where: eq(userDisplayPreferences.userId, userId),
+      columns: { developerDemoMode: true, onboardingCompleted: true },
+    });
+  } catch (error) {
+    console.warn("Developer preference row unavailable in settings.", error);
+    developerPrefsRow = undefined;
+  }
 
   const initial: IntegrationSnapshot = {
     dexcom: {

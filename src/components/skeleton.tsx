@@ -203,11 +203,6 @@ export function PatternsPageSkeleton() {
       aria-busy="true"
       aria-label="Loading insights"
     >
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">Insights</h1>
-        <p className="max-w-xl text-sm text-align-muted">Loading…</p>
-      </header>
-
       <div className="space-y-3" aria-hidden>
         <div className="flex flex-wrap gap-2">
           <Skeleton className="h-10 w-24 rounded-full" />

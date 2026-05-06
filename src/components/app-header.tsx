@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { SignInButton, useAuth, UserButton } from "@clerk/nextjs";
+import { SignInButton, useAuth, useUser, UserButton } from "@clerk/nextjs";
 
 function UserMenuIcon() {
   return (
@@ -34,6 +34,9 @@ type AppHeaderProps = {
 
 export function AppHeader({ devModeBanner = false }: AppHeaderProps) {
   const { isSignedIn, isLoaded } = useAuth();
+  const { user } = useUser();
+  const initial = (user?.firstName?.trim().charAt(0) || user?.username?.trim().charAt(0) || "A")
+    .toUpperCase();
 
   return (
     <header className="sticky top-0 z-40 border-b border-align-border/80 bg-white/85 backdrop-saturate-150 backdrop-blur-md supports-[backdrop-filter]:bg-white/70">
@@ -69,9 +72,14 @@ export function AppHeader({ devModeBanner = false }: AppHeaderProps) {
             <UserButton
               appearance={{
                 elements: {
-                  avatarBox: "h-9 w-9",
+                  avatarBox:
+                    "h-11 w-11 rounded-full border border-white/60 bg-[radial-gradient(circle_at_82%_12%,#acb98a_0%,#8baa90_20%,#5f8ea0_52%,#2f7185_100%)] shadow-sm shadow-black/15",
+                  avatarImage: "hidden",
+                  avatarFallback:
+                    "h-full w-full rounded-full bg-transparent text-base font-semibold text-white",
                 },
               }}
+              fallback={initial}
             />
           ) : (
             <SignInButton mode="modal">

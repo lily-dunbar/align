@@ -55,3 +55,33 @@ body {
     transform: translateY(0);
   }
 }
+
+@keyframes alignLaunchGlisten {
+  0% {
+    background-position: -170% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+@keyframes alignLaunchSparkle {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+.align-launch-glisten {
+  background-size: 200% auto;
+  animation: alignLaunchGlisten 2.1s ease-in-out infinite;
+}
+
+.align-launch-sparkle {
+  animation: alignLaunchSparkle 1.45s ease-in-out infinite;
+}

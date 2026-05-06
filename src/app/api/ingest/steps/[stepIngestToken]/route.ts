@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte, lt } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
 import { db } from "@/db";
@@ -112,6 +112,53 @@ function toHourBucket(rawTimestamp: string) {
       0,
     ),
   );
+}
+
+async function fillMissingRecentHourBuckets(
+  userId: string,
+  source: string,
+  hoursBack: number,
+): Promise<number> {
+  const now = new Date();
+  const currentHourUtc = new Date(
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      now.getUTCHours(),
+      0,
+      0,
+      0,
+    ),
+  );
+  const startUtc = new Date(currentHourUtc.getTime() - (hoursBack - 1) * 60 * 60 * 1000);
+
+  const existing = await db.query.hourlySteps.findMany({
+    where: and(
+      eq(hourlySteps.userId, userId),
+      eq(hourlySteps.source, source),
+      gte(hourlySteps.bucketStart, startUtc),
+      lt(hourlySteps.bucketStart, new Date(currentHourUtc.getTime() + 60 * 60 * 1000)),
+    ),
+    columns: { bucketStart: true },
+  });
+  const existingSet = new Set(existing.map((r) => r.bucketStart.toISOString()));
+
+  let inserted = 0;
+  for (let i = 0; i < hoursBack; i += 1) {
+    const bucketStart = new Date(startUtc.getTime() + i * 60 * 60 * 1000);
+    const key = bucketStart.toISOString();
+    if (existingSet.has(key)) continue;
+    await db.insert(hourlySteps).values({
+      userId,
+      bucketStart,
+      stepCount: 0,
+      source,
+      receivedAt: new Date(),
+    });
+    inserted += 1;
+  }
+  return inserted;
 }
 
 /** Shortcuts often wraps the Dictionary as `{ "Key": { … } }`. Unwrap recursively. */
@@ -281,10 +328,19 @@ export async function POST(
     let updated = 0;
     let unchanged = 0;
 
+    const source = "apple_shortcuts";
+    const bucketStepTotals = new Map<string, { bucketStart: Date; steps: number }>();
     for (const sample of samples) {
       const bucketStart = toHourBucket(sample.timestamp);
-      const source = "apple_shortcuts";
+      const key = bucketStart.toISOString();
+      const prev = bucketStepTotals.get(key);
+      bucketStepTotals.set(key, {
+        bucketStart,
+        steps: (prev?.steps ?? 0) + sample.steps,
+      });
+    }
 
+    for (const { bucketStart, steps } of bucketStepTotals.values()) {
       const existing = await db.query.hourlySteps.findFirst({
         where: and(
           eq(hourlySteps.userId, userId),
@@ -295,13 +351,14 @@ export async function POST(
       });
 
       if (existing) {
-        if (existing.stepCount === sample.steps) {
+        const nextStepCount = existing.stepCount + steps;
+        if (existing.stepCount === nextStepCount) {
           unchanged += 1;
         } else {
           await db
             .update(hourlySteps)
             .set({
-              stepCount: sample.steps,
+              stepCount: nextStepCount,
               receivedAt: new Date(),
               updatedAt: new Date(),
             })
@@ -312,13 +369,15 @@ export async function POST(
         await db.insert(hourlySteps).values({
           userId,
           bucketStart,
-          stepCount: sample.steps,
+          stepCount: steps,
           source,
           receivedAt: new Date(),
         });
         inserted += 1;
       }
     }
+
+    const zeroFilled = await fillMissingRecentHourBuckets(userId, "apple_shortcuts", 24);
 
     return NextResponse.json({
       ok: true,
@@ -327,6 +386,7 @@ export async function POST(
       inserted,
       updated,
       unchanged,
+      zeroFilled,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Ingest failed";

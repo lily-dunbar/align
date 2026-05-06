@@ -30,6 +30,7 @@ type DayResponse = {
     }>;
     stravaActivities: Array<{
       id: string;
+      name?: string | null;
       startAt: string;
       endAt: string | null;
       durationSec?: number | null;
@@ -388,9 +389,10 @@ function IconHelp({ className }: { className?: string }) {
 }
 
 const BG_DELTA_CHIP_CLASS: Record<BgDeltaTone, string> = {
-  up: "border-rose-200/90 bg-rose-50 text-rose-900 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)]",
+  // Use neutral brand tones (not good/bad semantics): rise = TIR green, fall = Avg Glucose green.
+  up: "border-[#bcd8cf]/90 bg-[#edf4f1] text-[#1b4d43] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)]",
   down:
-    "border-emerald-200/90 bg-emerald-50 text-emerald-900 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)]",
+    "border-[#dbe4c8]/90 bg-[#f5f8ee] text-[#45532a] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)]",
   flat: "border-zinc-200/90 bg-zinc-50 text-zinc-700",
   unknown: "border-dashed border-zinc-300/90 bg-zinc-50/90 text-zinc-600",
 };
@@ -543,7 +545,8 @@ export function DayInsightsPanel({ dateYmd }: Props) {
     const strava = data.streams.stravaActivities.map((a) => {
       const endIso =
         a.endAt ?? addMinutes(a.startAt, Math.round((a.durationSec ?? 1800) / 60));
-      const label = a.sportType?.trim() || a.activityType?.trim() || "Activity";
+      const label =
+        a.name?.trim() || a.sportType?.trim() || a.activityType?.trim() || "Activity";
       return {
         id: `strava-${a.id}`,
         rawId: a.id,

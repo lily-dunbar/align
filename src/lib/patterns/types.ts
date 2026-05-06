@@ -21,6 +21,16 @@ export type PatternEvidenceChart =
       overlayDays?: { ymd: string; hourMeanMgdl: (number | null)[] }[];
     }
   | {
+      kind: "dual_hour_profile";
+      /** One point per clock hour 0–23 (local); null when bucket has no samples. */
+      points: {
+        hour: number;
+        weekdayMeanMgdl: number | null;
+        weekendMeanMgdl: number | null;
+      }[];
+      caption?: string;
+    }
+  | {
       kind: "scatter_steps_mgdl";
       points: { ymd: string; steps: number; meanMgdl: number }[];
       thresholdSteps: number;

@@ -6,6 +6,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Legend,
   Line,
   LineChart,
   ReferenceArea,
@@ -117,6 +118,98 @@ function EvidenceChartInner({ chart, targetLow, targetHigh }: { chart: PatternEv
                 />
               ))}
               <Line type="monotone" dataKey="meanMgdl" stroke="#6d28d9" strokeWidth={2.5} dot={false} connectNulls name="Average" />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    );
+  }
+
+  if (chart.kind === "dual_hour_profile") {
+    return (
+      <div className="space-y-2">
+        {chart.caption ? (
+          <p className="text-[11px] leading-snug text-zinc-600">{chart.caption}</p>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-600">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-[#4f46e5]" aria-hidden />
+            Weekday
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full bg-[#0d9488]" aria-hidden />
+            Weekend
+          </span>
+        </div>
+        <div className="h-[220px] w-full min-w-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chart.points} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-zinc-200" />
+              <XAxis
+                dataKey="hour"
+                type="number"
+                domain={[0, 23]}
+                ticks={[0, 4, 8, 12, 16, 20]}
+                tickFormatter={hourTick}
+                tick={{ fontSize: 10 }}
+              />
+              <YAxis tick={{ fontSize: 10 }} domain={["auto", "auto"]} width={36} />
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (!active || !payload?.length) return null;
+                  const hourVal = typeof label === "number" ? label : Number(label);
+                  const row = payload[0]?.payload as
+                    | {
+                        weekdayMeanMgdl?: number | null;
+                        weekendMeanMgdl?: number | null;
+                      }
+                    | undefined;
+                  return (
+                    <div className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-xs shadow-md">
+                      <p className="font-medium text-zinc-800">
+                        {Number.isFinite(hourVal) ? `Hour ${hourTick(hourVal)}` : ""}
+                      </p>
+                      <p className="text-zinc-700">
+                        Weekday:{" "}
+                        <span className="font-medium">
+                          {row?.weekdayMeanMgdl != null
+                            ? `${Math.round(row.weekdayMeanMgdl)} mg/dL`
+                            : "—"}
+                        </span>
+                      </p>
+                      <p className="text-zinc-700">
+                        Weekend:{" "}
+                        <span className="font-medium">
+                          {row?.weekendMeanMgdl != null
+                            ? `${Math.round(row.weekendMeanMgdl)} mg/dL`
+                            : "—"}
+                        </span>
+                      </p>
+                    </div>
+                  );
+                }}
+              />
+              <ReferenceLine y={targetLow} stroke="#94a3b8" strokeDasharray="4 4" />
+              <ReferenceLine y={targetHigh} stroke="#94a3b8" strokeDasharray="4 4" />
+              <Legend wrapperStyle={{ display: "none" }} />
+              <Line
+                type="monotone"
+                dataKey="weekdayMeanMgdl"
+                stroke="#4f46e5"
+                strokeWidth={2.5}
+                dot={false}
+                connectNulls
+                name="Weekday"
+              />
+              <Line
+                type="monotone"
+                dataKey="weekendMeanMgdl"
+                stroke="#0d9488"
+                strokeWidth={2.5}
+                dot={false}
+                connectNulls
+                name="Weekend"
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -309,6 +402,16 @@ export function PatternLearnMorePanel({ learnMore, targetLowMgdl, targetHighMgdl
       </button>
       {open ? (
         <div id={panelId} className="mt-3 space-y-3 text-sm">
+          <SectionBlock label="Chart">
+            <div className="rounded-lg border border-zinc-200/90 bg-white p-2 shadow-sm">
+              <EvidenceChartInner
+                chart={learnMore.chart}
+                targetLow={targetLowMgdl}
+                targetHigh={targetHighMgdl}
+              />
+            </div>
+          </SectionBlock>
+
           <SectionBlock label="How to read this insight">
             <p className="text-sm leading-relaxed text-zinc-700">{learnMore.explanation}</p>
           </SectionBlock>
@@ -328,16 +431,6 @@ export function PatternLearnMorePanel({ learnMore, targetLowMgdl, targetHighMgdl
             ) : (
               <p className="text-xs text-zinc-500">No sample dates listed.</p>
             )}
-          </SectionBlock>
-
-          <SectionBlock label="Chart">
-            <div className="rounded-lg border border-zinc-200/90 bg-white p-2 shadow-sm">
-              <EvidenceChartInner
-                chart={learnMore.chart}
-                targetLow={targetLowMgdl}
-                targetHigh={targetHighMgdl}
-              />
-            </div>
           </SectionBlock>
 
           <p className="rounded-lg bg-zinc-100/80 px-3 py-2 text-[11px] leading-relaxed text-zinc-600">

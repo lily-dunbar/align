@@ -142,7 +142,7 @@ export default async function SettingsPage({
     recentStepRows = await db.query.hourlySteps.findMany({
       where: eq(hourlySteps.userId, userId),
       orderBy: [desc(hourlySteps.receivedAt)],
-      limit: 12,
+      limit: 96,
       columns: {
         bucketStart: true,
         stepCount: true,

@@ -34,6 +34,41 @@ function overlapMs(
   return Math.max(0, end - start);
 }
 
+function fillMissingHourlyStepBuckets(
+  rows: Array<{
+    bucketStart: Date;
+    stepCount: number;
+    source: string;
+    receivedAt: Date;
+  }>,
+  startUtc: Date,
+  endUtcExclusive: Date,
+) {
+  const byBucketIso = new Map(rows.map((r) => [r.bucketStart.toISOString(), r] as const));
+  const out: Array<{
+    bucketStart: Date;
+    stepCount: number;
+    source: string;
+    receivedAt: Date;
+  }> = [];
+
+  for (let t = startUtc.getTime(); t < endUtcExclusive.getTime(); t += 60 * 60 * 1000) {
+    const bucketStart = new Date(t);
+    const key = bucketStart.toISOString();
+    const existing = byBucketIso.get(key);
+    out.push(
+      existing ?? {
+        bucketStart,
+        stepCount: 0,
+        source: "filled_zero",
+        receivedAt: bucketStart,
+      },
+    );
+  }
+
+  return out;
+}
+
 export async function GET(request: NextRequest) {
   const { userId } = await auth();
   if (!userId) {
@@ -117,6 +152,7 @@ export async function GET(request: NextRequest) {
   }> = [];
   let stravaActivities: Array<{
     id: string;
+    name: string | null;
     startAt: Date;
     endAt: Date | null;
     durationSec: number | null;
@@ -206,6 +242,7 @@ export async function GET(request: NextRequest) {
         ),
         columns: {
           id: true,
+          name: true,
           startAt: true,
           endAt: true,
           durationSec: true,
@@ -229,7 +266,8 @@ export async function GET(request: NextRequest) {
     : null;
 
   const stepsMerged = mergeHourlyStepsPreferShortcutsFile(steps);
-  const totalSteps = stepsMerged.reduce((sum, s) => sum + s.stepCount, 0);
+  const stepsWithFilledGaps = fillMissingHourlyStepBuckets(stepsMerged, startUtc, endUtcExclusive);
+  const totalSteps = stepsWithFilledGaps.reduce((sum, s) => sum + s.stepCount, 0);
   const workoutsDurationMin = workouts.reduce(
     (sum, w) =>
       sum +
@@ -283,7 +321,7 @@ export async function GET(request: NextRequest) {
     },
     streams: {
       glucose,
-      hourlySteps: stepsMerged,
+      hourlySteps: stepsWithFilledGaps,
       manualWorkouts: workouts,
       foodEntries: food,
       sleepWindows: sleep,

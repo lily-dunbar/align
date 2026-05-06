@@ -48,6 +48,7 @@ type DayApiResponse = {
     /** Strava-synced sessions for the day (same layer as manual workouts). */
     stravaActivities?: Array<{
       id: string;
+      name?: string | null;
       startAt: string;
       endAt: string | null;
       durationSec: number | null;
@@ -136,6 +137,8 @@ const STEP_Y_MIN = 0;
 const STEP_Y_MAX = GLUCOSE_FLOOR;
 /** Smallest fraction of the step band used when an hour has steps (improves visibility for low counts). */
 const STEP_BAR_MIN_FRACTION = 0.14;
+const BG_AXIS_TICKS = [60, 120, 180, 240, 300] as const;
+const MOBILE_BG_AXIS_WIDTH = 52;
 
 /** Sleep window shading; only overlaps real sleep vs viewed day (handles midnight crossing). */
 const SLEEP_BAND_FILL = "#DAE6E5";
@@ -460,8 +463,10 @@ function stravaActivityTooltipDetail(
   a: NonNullable<DayApiResponse["streams"]["stravaActivities"]>[number],
   timeZone: string,
 ): string {
-  const raw = `${a.sportType ?? ""} ${a.activityType ?? ""}`.trim();
-  const type = raw.replace(/\s+/g, " ") || "Activity";
+  const type =
+    a.name?.trim() ||
+    `${a.sportType ?? ""} ${a.activityType ?? ""}`.trim().replace(/\s+/g, " ") ||
+    "Activity";
   const start = formatShortClock(a.startAt, timeZone);
   const endIso = stravaActivityEndIso(a);
   const end = formatShortClock(endIso, timeZone);
@@ -547,6 +552,7 @@ export function DailyViewChart({ dateYmd }: Props) {
   const [nowTick, setNowTick] = useState(0);
   const [isVerySmallScreen, setIsVerySmallScreen] = useState(false);
   const [isMobileScreen, setIsMobileScreen] = useState(false);
+  const [reloadBusy, setReloadBusy] = useState(false);
 
   type DayLoadMode = "navigation" | "same-day-refresh";
 
@@ -750,6 +756,41 @@ export function DailyViewChart({ dateYmd }: Props) {
 
   const seriesAnimActive = !prefersReducedMotion;
 
+  async function reloadLatestData() {
+    if (reloadBusy) return;
+    setReloadBusy(true);
+    try {
+      const results = await Promise.allSettled([
+        fetch("/api/integrations/dexcom/sync?format=json", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }),
+        fetch("/api/integrations/strava/sync?format=json", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }),
+        fetch("/api/import/health-sync", {
+          method: "POST",
+          cache: "no-store",
+          credentials: "include",
+        }),
+      ]);
+
+      const anySucceeded = results.some(
+        (r) => r.status === "fulfilled" && r.value.ok,
+      );
+
+      // Refresh day chart/cards even if only one integration succeeded.
+      if (anySucceeded) {
+        window.dispatchEvent(new CustomEvent(DAY_DATA_CHANGED_EVENT));
+      }
+    } finally {
+      setReloadBusy(false);
+    }
+  }
+
   if (error) {
     return (
       <section className="w-full rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -792,7 +833,15 @@ export function DailyViewChart({ dateYmd }: Props) {
         <h2 className="min-w-0 flex-1 text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
           Daily View
         </h2>
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            disabled={reloadBusy}
+            onClick={() => void reloadLatestData()}
+            className="inline-flex min-h-9 items-center justify-center rounded-full border border-align-border/90 bg-white px-3 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-black/[0.03] transition hover:bg-align-subtle disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {reloadBusy ? "Reloading…" : "Reload data"}
+          </button>
           {(
             [
               { id: "24h" as const, label: "24h" },
@@ -852,11 +901,20 @@ export function DailyViewChart({ dateYmd }: Props) {
                   <YAxis
                     type="number"
                     domain={[STEP_Y_MIN, 300]}
-                    tick={{ fontSize: isVerySmallScreen ? 10 : 11 }}
-                    tickFormatter={(v) => (v < GLUCOSE_FLOOR ? "" : String(v))}
+                    ticks={[...BG_AXIS_TICKS]}
+                    tick={{
+                      fontSize: isVerySmallScreen ? 10 : 11,
+                      fill: "#4b5563",
+                      fontWeight: 500,
+                    }}
+                    tickFormatter={(v) => String(v)}
+                    tickLine={false}
+                    axisLine={false}
+                    interval={0}
+                    mirror
                     allowDecimals={false}
-                    tickMargin={6}
-                    width={isVerySmallScreen ? 42 : 38}
+                    tickMargin={8}
+                    width={MOBILE_BG_AXIS_WIDTH}
                   />
                 </ComposedChart>
               </ResponsiveContainer>
@@ -1032,8 +1090,16 @@ export function DailyViewChart({ dateYmd }: Props) {
                   <YAxis
                     type="number"
                     domain={[STEP_Y_MIN, 300]}
-                    tick={{ fontSize: isVerySmallScreen ? 10 : 11 }}
-                    tickFormatter={(v) => (v < GLUCOSE_FLOOR ? "" : String(v))}
+                    ticks={[...BG_AXIS_TICKS]}
+                    tick={{
+                      fontSize: isVerySmallScreen ? 10 : 11,
+                      fill: "#4b5563",
+                      fontWeight: 500,
+                    }}
+                    tickFormatter={(v) => String(v)}
+                    tickLine={false}
+                    axisLine={false}
+                    interval={0}
                     allowDecimals={false}
                     width={40}
                   />

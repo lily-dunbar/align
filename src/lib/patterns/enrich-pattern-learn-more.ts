@@ -43,6 +43,69 @@ function hourChart(ctx: PatternFeatureContext, shade?: [number, number][]): Patt
   return { kind: "hour_of_day", points, shadeRanges: shade, overlayDays };
 }
 
+function ymdIsWeekend(ymd: string): boolean {
+  const m = ymd.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return false;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  const day = Number(m[3]);
+  const dow = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+  return dow === 0 || dow === 6;
+}
+
+function weekdayWeekendHourProfileChart(ctx: PatternFeatureContext): PatternEvidenceChart {
+  const weekdaySums = new Array<number>(24).fill(0);
+  const weekdayCounts = new Array<number>(24).fill(0);
+  const weekendSums = new Array<number>(24).fill(0);
+  const weekendCounts = new Array<number>(24).fill(0);
+
+  for (const d of ctx.evidence.hourlyCurvesByDay) {
+    const isWeekend = ymdIsWeekend(d.ymd);
+    for (let h = 0; h < 24; h += 1) {
+      const mgdl = d.hourMeanMgdl[h];
+      if (mgdl == null || !Number.isFinite(mgdl)) continue;
+      if (isWeekend) {
+        weekendSums[h] += mgdl;
+        weekendCounts[h] += 1;
+      } else {
+        weekdaySums[h] += mgdl;
+        weekdayCounts[h] += 1;
+      }
+    }
+  }
+
+  const points = Array.from({ length: 24 }, (_, hour) => ({
+    hour,
+    weekdayMeanMgdl:
+      weekdayCounts[hour] > 0 ? Math.round(weekdaySums[hour] / weekdayCounts[hour]) : null,
+    weekendMeanMgdl:
+      weekendCounts[hour] > 0 ? Math.round(weekendSums[hour] / weekendCounts[hour]) : null,
+  }));
+
+  return {
+    kind: "dual_hour_profile",
+    points,
+    caption:
+      "Weekday vs weekend aggregate curves by local clock hour (Mon-Fri vs Sat-Sun).",
+  };
+}
+
+function isWeekdayWeekendComparisonInsight(p: PatternInsightJson, stem: string): boolean {
+  if (
+    stem.startsWith("temporal-weekday-weekend") ||
+    stem === "demo-temporal-weekday" ||
+    stem === "demo-temporal-weekend"
+  ) {
+    return true;
+  }
+  const haystack = `${p.title} ${p.description}`.toLowerCase();
+  return (
+    p.type === "Temporal" &&
+    haystack.includes("weekday") &&
+    haystack.includes("weekend")
+  );
+}
+
 function sampleDays(ymds: string[]): string[] {
   const u = [...new Set(ymds)].sort();
   return u.slice(-MAX_SAMPLE_DAYS);
@@ -111,31 +174,21 @@ function buildLearnMore(p: PatternInsightJson, ctx: PatternFeatureContext): Patt
     };
   }
 
-  if (
-    stem.startsWith("temporal-weekday-weekend") ||
-    stem === "demo-temporal-weekday" ||
-    stem === "demo-temporal-weekend"
-  ) {
+  if (isWeekdayWeekendComparisonInsight(p, stem)) {
     const tw = ctx.temporal.weekdayMeanMgdl;
     const we = ctx.temporal.weekendMeanMgdl;
-    if (tw != null && we != null) {
+    if (tw != null || we != null) {
       return {
         explanation:
-          "Every Dexcom reading in the selected window is tagged weekday (Mon–Fri) or weekend (Sat–Sun) using your pattern time zone. The chart compares the average mg/dL in each bucket—that difference is what the card headline rounds to.",
+          "Every Dexcom reading in the selected window is tagged weekday (Mon-Fri) or weekend (Sat-Sun) using your pattern time zone. The chart overlays two aggregate hourly curves so you can compare shape and level across the day, not just one overall average.",
         contributingDaysYmd: sampleDays(ev.cgmDaysSample),
         contributingNote: baseNote(),
-        chart: {
-          kind: "two_bar",
-          left: { label: "Weekdays Mon–Fri", valueMgdl: Math.round(tw) },
-          right: { label: "Weekends Sat–Sun", valueMgdl: Math.round(we) },
-          caption:
-            "Each bar is the average of all glucose readings on those calendar days in range (not a daily average).",
-        },
+        chart: weekdayWeekendHourProfileChart(ctx),
       };
     }
     return {
       explanation:
-        "We still split readings by weekday vs weekend in your zone, but there are not enough samples in one of the buckets yet for a fair bar comparison—try a longer window.",
+        "We still split readings by weekday vs weekend in your zone, but there are not enough samples yet to plot both curves clearly. Try a longer window for a stronger comparison.",
       contributingDaysYmd: sampleDays(ev.cgmDaysSample),
       contributingNote: baseNote(),
       chart: hourChart(ctx),

@@ -63,10 +63,10 @@ export default async function OnboardingPage() {
   const wizardKey = `${dexcomConnected ? "1" : "0"}-${stravaRow ? "1" : "0"}-${stepTok ? "1" : "0"}`;
 
   return (
-    <main className="relative min-h-dvh overflow-hidden bg-gradient-to-br from-[#17463d] via-[#2d6f61] to-[#d9b24c]">
+    <main className="relative min-h-dvh overflow-hidden bg-[radial-gradient(circle_at_82%_12%,#acb98a_0%,#8baa90_18%,#6a9aa1_38%,#467f91_66%,#275f6f_100%)]">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_12%_14%,rgba(255,255,255,0.42),transparent_34%),radial-gradient(circle_at_88%_12%,rgba(255,255,255,0.26),transparent_30%),radial-gradient(circle_at_50%_88%,rgba(255,255,255,0.2),transparent_34%)]"
+        className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.06)_0%,rgba(255,255,255,0)_38%,rgba(8,32,39,0.1)_100%)]"
       />
       <Suspense fallback={<OnboardingFallback />}>
         <OnboardingWizard key={wizardKey} initialPrefs={prefs} />

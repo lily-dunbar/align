@@ -91,7 +91,7 @@ const FOOD_PRESETS: {
     hint: "1h",
     carbsHint: "20",
   },
-  { emoji: "🍽️", typeTag: "medium_acting", title: "Med acting", hint: "2h", carbsHint: "40" },
+  { emoji: "🍎", typeTag: "medium_acting", title: "Med acting", hint: "2h", carbsHint: "40" },
   { emoji: "🌯", typeTag: "slow_acting", title: "Slow acting", hint: "3h", carbsHint: "60" },
 ];
 
@@ -240,6 +240,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
     carbsGrams: "",
     foodTypeTag: null as FoodTypeTag | null,
   });
+  const [mealTimeConfirmedLabel, setMealTimeConfirmedLabel] = useState<string | null>(null);
 
   const [editingWorkoutId, setEditingWorkoutId] = useState<string | null>(null);
   const [editingFoodId, setEditingFoodId] = useState<string | null>(null);
@@ -260,6 +261,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
     startTransition(() => {
       setWorkoutForm((s) => ({ ...s, date: resolvedDateYmd }));
       setFoodForm((s) => ({ ...s, date: resolvedDateYmd }));
+      setMealTimeConfirmedLabel(null);
       setSleepForm((s) => ({
         ...s,
         bedDate: prevYmd(resolvedDateYmd),
@@ -345,6 +347,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
       setTab(next === "sleep" || next === "activity" || next === "food" ? next : "activity");
       setWorkoutForm((s) => ({ ...s, date: resolvedDateYmd }));
       setFoodForm((s) => ({ ...s, date: resolvedDateYmd }));
+      setMealTimeConfirmedLabel(null);
       setSleepForm({
         bedDate: prevYmd(resolvedDateYmd),
         bedTime: "22:00",
@@ -384,6 +387,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
     const iso = zonedDateTimeToUtcIso(foodForm.date, foodForm.time, effectiveTz);
     return inferMealPeriodFromLocalTime(iso, effectiveTz);
   }, [foodForm.date, foodForm.time, effectiveTz]);
+  const foodFormMealLabel = mealTimeConfirmedLabel ?? foodFormMealPreview.label;
 
   const sleepForDate = useMemo(
     () =>
@@ -427,6 +431,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
         const f = foods.find((row) => row.id === focusedEdit.id);
         if (!f) return;
         setTab("food");
+        setMealTimeConfirmedLabel(null);
         setFoodForm({
           date: utcIsoToZonedDateInput(f.eatenAt, effectiveTz),
           time: utcIsoToZonedTimeInput(f.eatenAt, effectiveTz),
@@ -619,6 +624,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
         carbsGrams: "",
         foodTypeTag: null,
       });
+      setMealTimeConfirmedLabel(null);
       await loadAll();
       notifyDayDataChanged();
       showSuccessToast("Food saved");
@@ -718,7 +724,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
     ].join(" ");
 
   const focusedEditTitle = useMemo(() => {
-    if (!focusedEdit) return "Add / edit entries";
+    if (!focusedEdit) return "Add Activity";
     if (focusedEdit.kind === "sleep") return "Edit Sleep";
     if (focusedEdit.kind === "activity") return "Edit Activity";
     if (focusedEdit.kind === "food") return "Edit Food";
@@ -734,6 +740,19 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
     }
     return "Capture meal timing and optional carbs to improve food-related insights.";
   }, [tab]);
+
+  function applySuggestedMealTime() {
+    setFoodForm((s) => ({
+      ...s,
+      time: suggestedTimeForMealPeriod(foodFormMealPreview.period),
+    }));
+    setMealTimeConfirmedLabel(foodFormMealPreview.label);
+  }
+
+  function onFoodTimeChange(nextTime: string) {
+    setFoodForm((s) => ({ ...s, time: nextTime }));
+    setMealTimeConfirmedLabel(null);
+  }
 
   return (
     <>
@@ -1025,10 +1044,12 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                         type="time"
                         className={inputClass(true)}
                         value={foodForm.time}
-                        onChange={(e) => setFoodForm((s) => ({ ...s, time: e.target.value }))}
+                        onChange={(e) => onFoodTimeChange(e.target.value)}
                       />
                       <p className="text-xs leading-relaxed text-amber-950/90">
-                        <span className="font-semibold">Looks like {foodFormMealPreview.label}</span>
+                        <span className="font-semibold">
+                          {mealTimeConfirmedLabel ? foodFormMealLabel : `Looks like ${foodFormMealLabel}`}
+                        </span>
                         <span className="font-normal text-zinc-600">
                           {" "}
                           — logged using your day timezone (Settings).
@@ -1037,21 +1058,13 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                       <button
                         type="button"
                         className="text-xs font-medium text-align-forest underline underline-offset-2 hover:text-align-forest-muted"
-                        onClick={() =>
-                          setFoodForm((s) => ({
-                            ...s,
-                            time: suggestedTimeForMealPeriod(foodFormMealPreview.period),
-                          }))
-                        }
+                        onClick={applySuggestedMealTime}
                       >
                         Use {foodFormMealPreview.label.toLowerCase()} time
                       </button>
                     </div>
-                    <div className="rounded-2xl border border-dashed border-align-border/90 bg-align-subtle/40 p-4">
-                      <FieldLabel>Type (optional)</FieldLabel>
-                      <p className="mb-3 text-xs text-zinc-500">
-                        Typical glucose curve length as a hint, not medical advice.
-                      </p>
+                    <div className="space-y-1.5">
+                      <FieldLabel>Type tag (optional)</FieldLabel>
                       <select
                         className={inputClass()}
                         value={foodForm.foodTypeTag ?? ""}
@@ -1072,28 +1085,11 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                           </option>
                         ))}
                       </select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <FieldLabel>Type tag (optional)</FieldLabel>
-                      <div className="flex flex-wrap gap-2">
-                        {foodForm.foodTypeTag ? (
-                          <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-900">
-                            {foodTypeTagLabel(foodForm.foodTypeTag)}
-                            <button
-                              type="button"
-                              className="rounded-full px-1 text-emerald-700 hover:bg-emerald-100"
-                              aria-label="Clear food type tag"
-                              onClick={() =>
-                                setFoodForm((s) => ({ ...s, foodTypeTag: null }))
-                              }
-                            >
-                              ×
-                            </button>
-                          </span>
-                        ) : (
-                          <span className="text-xs text-zinc-500">No type selected</span>
-                        )}
-                      </div>
+                      {foodForm.foodTypeTag ? (
+                        <p className="text-xs text-zinc-500">
+                          Selected: {foodTypeTagLabel(foodForm.foodTypeTag)}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="space-y-1.5">
                       <FieldLabel>Label</FieldLabel>
@@ -1371,10 +1367,14 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                           type="time"
                           className={inputClass(true)}
                           value={foodForm.time}
-                          onChange={(e) => setFoodForm((s) => ({ ...s, time: e.target.value }))}
+                          onChange={(e) => onFoodTimeChange(e.target.value)}
                         />
                         <p className="text-xs leading-relaxed text-amber-950/90">
-                          <span className="font-semibold">Looks like {foodFormMealPreview.label}</span>
+                          <span className="font-semibold">
+                            {mealTimeConfirmedLabel
+                              ? foodFormMealLabel
+                              : `Looks like ${foodFormMealLabel}`}
+                          </span>
                           <span className="font-normal text-zinc-600">
                             {" "}
                             — logged using your day timezone (Settings).
@@ -1383,21 +1383,13 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                         <button
                           type="button"
                           className="text-xs font-medium text-align-forest underline underline-offset-2 hover:text-align-forest-muted"
-                          onClick={() =>
-                            setFoodForm((s) => ({
-                              ...s,
-                              time: suggestedTimeForMealPeriod(foodFormMealPreview.period),
-                            }))
-                          }
+                          onClick={applySuggestedMealTime}
                         >
                           Use {foodFormMealPreview.label.toLowerCase()} time
                         </button>
                       </div>
-                      <div className="rounded-2xl border border-dashed border-align-border/90 bg-align-subtle/40 p-4">
-                        <FieldLabel>Type (optional)</FieldLabel>
-                        <p className="mb-3 text-xs text-zinc-500">
-                          Typical glucose curve length as a hint, not medical advice.
-                        </p>
+                      <div className="space-y-1.5">
+                        <FieldLabel>Type tag (optional)</FieldLabel>
                         <select
                           className={inputClass()}
                           value={foodForm.foodTypeTag ?? ""}
@@ -1418,28 +1410,11 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                             </option>
                           ))}
                         </select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <FieldLabel>Type tag (optional)</FieldLabel>
-                        <div className="flex flex-wrap gap-2">
-                          {foodForm.foodTypeTag ? (
-                            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-900">
-                              {foodTypeTagLabel(foodForm.foodTypeTag)}
-                              <button
-                                type="button"
-                                className="rounded-full px-1 text-emerald-700 hover:bg-emerald-100"
-                                aria-label="Clear food type tag"
-                                onClick={() =>
-                                  setFoodForm((s) => ({ ...s, foodTypeTag: null }))
-                                }
-                              >
-                                ×
-                              </button>
-                            </span>
-                          ) : (
-                            <span className="text-xs text-zinc-500">No type selected</span>
-                          )}
-                        </div>
+                        {foodForm.foodTypeTag ? (
+                          <p className="text-xs text-zinc-500">
+                            Selected: {foodTypeTagLabel(foodForm.foodTypeTag)}
+                          </p>
+                        ) : null}
                       </div>
                       <div className="space-y-1.5">
                         <FieldLabel>Label</FieldLabel>

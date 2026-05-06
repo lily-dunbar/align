@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { LightToast } from "@/components/light-toast";
 
 function readBrowserOrigin(): string {
@@ -113,6 +113,30 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
     ingestOriginMismatch: boolean;
   }>({ browserOrigin: null, ingestOriginMismatch: false });
   const mostRecentIngest = initial.steps.recentRows[0] ?? null;
+  const chartCoverageRows = useMemo(() => {
+    const byBucket = new Map(
+      initial.steps.recentRows.map((r) => [r.bucketStartIso, r] as const),
+    );
+    const now = new Date();
+    now.setUTCMinutes(0, 0, 0);
+    const rows: Array<{
+      bucketStartIso: string;
+      stepCount: number | null;
+      source: string | null;
+      hasData: boolean;
+    }> = [];
+    for (let i = 0; i < 24; i += 1) {
+      const bucket = new Date(now.getTime() - i * 60 * 60 * 1000).toISOString();
+      const hit = byBucket.get(bucket);
+      rows.push({
+        bucketStartIso: bucket,
+        stepCount: hit?.stepCount ?? null,
+        source: hit?.source ?? null,
+        hasData: Boolean(hit),
+      });
+    }
+    return rows;
+  }, [initial.steps.recentRows]);
 
   function showSuccessToast(message: string) {
     setToast(message);
@@ -271,6 +295,38 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
       router.refresh();
     } catch (e) {
       setNotice(e instanceof Error ? e.message : "Could not connect Steps");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function syncSteps() {
+    setBusy("sync-steps");
+    setNotice(null);
+    setOpenOverflow(null);
+    try {
+      const resp = await fetch("/api/import/health-sync", {
+        method: "POST",
+        cache: "no-store",
+        credentials: "include",
+      });
+      const json = (await resp.json()) as {
+        ok?: boolean;
+        inserted?: number;
+        updated?: number;
+        unchanged?: number;
+        error?: string;
+      };
+      if (!resp.ok || !json.ok) {
+        throw new Error(json.error ?? "Steps sync failed");
+      }
+      showSuccessToast(
+        `Steps sync done: +${json.inserted ?? 0} new, ${json.updated ?? 0} updated.`,
+      );
+      await loadStepsIngestInfo();
+      router.refresh();
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Steps sync failed");
     } finally {
       setBusy(null);
     }
@@ -608,6 +664,14 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 <>
                   <button
                     type="button"
+                    className={syncButtonClass}
+                    disabled={busy !== null}
+                    onClick={() => void syncSteps()}
+                  >
+                    {busy === "sync-steps" ? "Syncing…" : "Sync"}
+                  </button>
+                  <button
+                    type="button"
                     aria-haspopup="menu"
                     aria-expanded={openOverflow === "steps"}
                     className={secondaryIconButtonClass}
@@ -806,6 +870,35 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 <p>No ingest rows yet.</p>
               ) : (
                 <div className="space-y-3">
+                  <div className="rounded-md border border-zinc-200 bg-zinc-50/70 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-700">
+                      Last 24h chart buckets
+                    </p>
+                    <p className="mt-1 text-[11px] text-zinc-600">
+                      Each row is one hourly bucket used by the Daily chart. Missing rows explain gaps.
+                    </p>
+                    <div className="mt-2 space-y-1.5">
+                      {chartCoverageRows.map((row) => (
+                        <div
+                          key={row.bucketStartIso}
+                          className={`flex items-center justify-between rounded px-2 py-1 ${
+                            row.hasData ? "bg-white ring-1 ring-zinc-200/80" : "bg-zinc-100/80"
+                          }`}
+                        >
+                          <span className="font-medium">
+                            {formatWhen(row.bucketStartIso)}
+                          </span>
+                          <span className={row.hasData ? "text-zinc-800" : "text-zinc-500"}>
+                            {row.hasData
+                              ? `${row.stepCount?.toLocaleString() ?? 0} steps · ${stepsSourceLabel(
+                                  row.source ?? "",
+                                )}`
+                              : "No data"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                   <div className="rounded-md border border-emerald-200 bg-emerald-50/70 p-3">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
                       Most recent ingest

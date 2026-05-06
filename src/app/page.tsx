@@ -9,6 +9,8 @@ import { DayInsightsPanel } from "@/components/day-insights-panel";
 import { DaySummaryCards } from "@/components/day-summary-cards";
 import { DateNav } from "@/components/date-nav";
 import { DailyViewChart } from "@/components/daily-view-chart";
+import { HomeGoalNotifications } from "@/components/home-goal-notifications";
+import { HomeStepsAutoSync } from "@/components/home-steps-auto-sync";
 import { ManualEntryPanel } from "@/components/manual-entry-panel";
 import { DailyDashboardSkeleton } from "@/components/skeleton";
 import { db } from "@/db";
@@ -71,6 +73,8 @@ export default async function Home({ searchParams }: HomeProps) {
             <DexcomBackfillPrompt shareCredentialsMode={dexcomShareMode} />
           ) : null}
           <Suspense fallback={<DailyDashboardSkeleton />}>
+            <HomeStepsAutoSync />
+            <HomeGoalNotifications dateYmd={selectedDateYmd} />
             <DateNav initialDateYmd={selectedDateYmd} />
             <ManualEntryPanel
               key={`manual-${selectedDateYmd}`}

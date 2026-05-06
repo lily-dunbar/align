@@ -5,6 +5,7 @@ import { Geist, Geist_Mono, Lora } from "next/font/google";
 
 import { AppBottomNav } from "@/components/app-bottom-nav";
 import { AppHeader } from "@/components/app-header";
+import { AppLaunchSplashGate } from "@/components/app-launch-splash-gate";
 import { getDeveloperDemoModeForUser } from "@/lib/user-display-preferences";
 import "./globals.css";
 
@@ -48,11 +49,13 @@ export default async function RootLayout({
     >
       <body className="flex min-h-full flex-col bg-background">
         <ClerkProvider>
-          <AppHeader devModeBanner={devModeBanner} />
-          <div className="flex min-h-0 flex-1 flex-col pb-[calc(3.25rem+env(safe-area-inset-bottom,0px))]">
-            {children}
-          </div>
-          <AppBottomNav />
+          <AppLaunchSplashGate>
+            <AppHeader devModeBanner={devModeBanner} />
+            <div className="flex min-h-0 flex-1 flex-col pb-[calc(3.25rem+env(safe-area-inset-bottom,0px))]">
+              {children}
+            </div>
+            <AppBottomNav />
+          </AppLaunchSplashGate>
         </ClerkProvider>
       </body>
     </html>

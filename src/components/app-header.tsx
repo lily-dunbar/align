@@ -28,20 +28,18 @@ function UserMenuIcon() {
 }
 
 type AppHeaderProps = {
-  /** Server-driven: set `DEMO_MODE=true` in env for class demos (see `npm run seed:demo`). */
-  demoMode?: boolean;
+  /** True when per-user dev mode or site `DEMO_MODE` env is on — shows the yellow banner. */
+  devModeBanner?: boolean;
 };
 
-export function AppHeader({ demoMode = false }: AppHeaderProps) {
+export function AppHeader({ devModeBanner = false }: AppHeaderProps) {
   const { isSignedIn, isLoaded } = useAuth();
 
   return (
     <header className="sticky top-0 z-40 border-b border-align-border/80 bg-white/85 backdrop-saturate-150 backdrop-blur-md supports-[backdrop-filter]:bg-white/70">
-      {demoMode ? (
-        <div className="border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-center text-[11px] font-medium text-amber-950 md:px-8">
-          Demo mode — seeded CGM, steps, and workouts for your signed-in account. Run{" "}
-          <code className="rounded bg-amber-100/80 px-1 font-mono text-[10px]">npm run seed:demo</code>{" "}
-          with <code className="rounded bg-amber-100/80 px-1 font-mono text-[10px]">DEMO_USER_ID</code>.
+      {devModeBanner ? (
+        <div className="border-b border-yellow-200/80 bg-yellow-50/90 px-4 py-1.5 text-center text-xs font-medium text-yellow-600 md:px-8">
+          Demo Mode
         </div>
       ) : null}
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-4 px-4 md:px-8">

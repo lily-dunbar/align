@@ -489,6 +489,18 @@ function foodEntryTooltip(
   return `${title} · ${when} · ${windowLabel} absorption window (modeled)`;
 }
 
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReduced(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  return reduced;
+}
+
 function hourLabel(v: number) {
   const totalMinutes = Math.round(v * 60);
   const hour24 = ((Math.floor(totalMinutes / 60) % 24) + 24) % 24;
@@ -522,11 +534,14 @@ type Props = {
 export function DailyViewChart({ dateYmd }: Props) {
   const resolvedDateYmd = useResolvedDayYmd(dateYmd);
   const effectiveTz = useEffectiveTimeZone();
+  const prefersReducedMotion = usePrefersReducedMotion();
   const [payload, setPayload] = useState<DayApiResponse | null>(null);
   const [prefs, setPrefs] = useState<ChartDisplayPreferences | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [timelineWindow, setTimelineWindow] = useState<TimelineWindow>("24h");
   const [nowTick, setNowTick] = useState(0);
+  const [isVerySmallScreen, setIsVerySmallScreen] = useState(false);
+  const [isMobileScreen, setIsMobileScreen] = useState(false);
 
   type DayLoadMode = "navigation" | "same-day-refresh";
 
@@ -576,6 +591,20 @@ export function DailyViewChart({ dateYmd }: Props) {
     const id = setInterval(() => setNowTick((n) => n + 1), 60_000);
     return () => clearInterval(id);
   }, [payload, resolvedDateYmd, timelineWindow]);
+
+  useEffect(() => {
+    const read = () => setIsVerySmallScreen(window.innerWidth < 380);
+    read();
+    window.addEventListener("resize", read);
+    return () => window.removeEventListener("resize", read);
+  }, []);
+
+  useEffect(() => {
+    const read = () => setIsMobileScreen(window.innerWidth < 640);
+    read();
+    window.addEventListener("resize", read);
+    return () => window.removeEventListener("resize", read);
+  }, []);
 
   /** 12h rolling window is only for the current local calendar day; other days stay 24h. */
   useEffect(() => {
@@ -654,6 +683,19 @@ export function DailyViewChart({ dateYmd }: Props) {
     return rows;
   }, [payload]);
 
+  const chartSeriesAnimKey = useMemo(() => {
+    if (!chartData.length) return resolvedDateYmd;
+    let glucoseHours = 0;
+    let stepSum = 0;
+    for (const r of chartData) {
+      if (r.glucose != null) glucoseHours += 1;
+      stepSum += r.steps;
+    }
+    return `${resolvedDateYmd}|${glucoseHours}|${stepSum}`;
+  }, [chartData, resolvedDateYmd]);
+
+  const seriesAnimActive = !prefersReducedMotion;
+
   if (error) {
     return (
       <section className="w-full rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
@@ -683,56 +725,90 @@ export function DailyViewChart({ dateYmd }: Props) {
   const [xMin, xMax] = xDomain;
   const xTicks = timelineTicks(effectiveTimelineWindow, xDomain);
 
+  const chartMargins = {
+    top: 36,
+    right: isMobileScreen ? 8 : 12,
+    bottom: 8,
+    left: isMobileScreen ? 0 : isVerySmallScreen ? 0 : 2,
+  };
+
   return (
     <section className="w-full min-w-0 rounded-2xl border border-align-border/90 bg-white/90 p-5 text-left ring-1 ring-black/[0.03] backdrop-blur-[2px] md:p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-base font-semibold tracking-tight text-foreground md:text-lg">Daily View</h2>
-        <div className="flex min-w-0 w-full items-center gap-2 sm:w-auto">
-          <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.12em] text-align-muted">
-            Timeline
-          </span>
-          <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:flex-initial">
-            {(
-              [
-                { id: "24h" as const, label: "24h" },
-                { id: "12h" as const, label: "12h" },
-              ] as const
-            ).map(({ id, label }) => {
-              const is12 = id === "12h";
-              const disabled = is12 && !isTodayView;
-              const selected = effectiveTimelineWindow === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  disabled={disabled}
-                  title={
-                    disabled ? "12h view is only available when viewing today" : undefined
-                  }
-                  onClick={() => {
-                    if (!disabled) setTimelineWindow(id);
-                  }}
-                  className={
-                    selected
-                      ? "min-h-9 flex-1 rounded-full bg-align-forest px-3 py-1.5 text-center text-[11px] font-medium text-white shadow-sm shadow-black/10 sm:flex-none sm:min-h-0"
-                      : disabled
-                        ? "min-h-9 flex-1 cursor-not-allowed rounded-full bg-zinc-100 px-3 py-1.5 text-center text-[11px] font-medium text-zinc-400 ring-1 ring-black/[0.04] sm:flex-none sm:min-h-0"
-                        : "min-h-9 flex-1 rounded-full bg-align-subtle px-3 py-1.5 text-center text-[11px] font-medium text-zinc-600 ring-1 ring-black/[0.04] hover:bg-white sm:flex-none sm:min-h-0"
-                  }
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+      <div className="flex flex-row items-center justify-between gap-3">
+        <h2 className="min-w-0 flex-1 text-base font-semibold tracking-tight text-foreground md:text-lg">
+          Daily View
+        </h2>
+        <div className="flex shrink-0 items-center gap-1">
+          {(
+            [
+              { id: "24h" as const, label: "24h" },
+              { id: "12h" as const, label: "12h" },
+            ] as const
+          ).map(({ id, label }) => {
+            const is12 = id === "12h";
+            const disabled = is12 && !isTodayView;
+            const selected = effectiveTimelineWindow === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                disabled={disabled}
+                title={disabled ? "12h view is only available when viewing today" : undefined}
+                onClick={() => {
+                  if (!disabled) setTimelineWindow(id);
+                }}
+                className={
+                  selected
+                    ? "rounded-full bg-align-forest px-2.5 py-1 text-center text-[10px] font-medium leading-none text-white shadow-sm shadow-black/10"
+                    : disabled
+                      ? "cursor-not-allowed rounded-full bg-zinc-100 px-2.5 py-1 text-center text-[10px] font-medium leading-none text-zinc-400 ring-1 ring-black/[0.04]"
+                      : "rounded-full bg-align-subtle px-2.5 py-1 text-center text-[10px] font-medium leading-none text-zinc-600 ring-1 ring-black/[0.04] hover:bg-white"
+                }
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
       </div>
       <div
         key={resolvedDateYmd}
-        className="mt-4 h-[22rem] min-h-[20rem] w-full min-w-0 rounded-xl bg-gradient-to-b from-align-subtle/90 to-align-canvas/40 p-2 ring-1 ring-inset ring-black/[0.03] motion-safe:animate-[alignChartEnter_0.38s_ease-out_both] motion-reduce:animate-none sm:h-96"
+        className="mt-4 h-[22rem] min-h-[20rem] w-full min-w-0 rounded-xl bg-gradient-to-b from-align-subtle/90 to-align-canvas/40 p-1.5 ring-1 ring-inset ring-black/[0.03] motion-safe:animate-[alignChartEnter_0.38s_ease-out_both] motion-reduce:animate-none sm:h-96 sm:p-2"
       >
-        <ResponsiveContainer width="100%" height="100%" minWidth={280} minHeight={260}>
-          <ComposedChart data={chartData} margin={{ top: 36, right: 12, bottom: 8, left: 4 }}>
+        <div className="flex h-full min-h-0 w-full">
+          {isMobileScreen ? (
+            <div
+              className="flex h-full w-10 shrink-0 flex-col border-r border-black/[0.06] bg-gradient-to-b from-align-subtle/90 to-align-canvas/40"
+              aria-hidden
+            >
+              <ResponsiveContainer width="100%" height="100%" minHeight={260}>
+                <ComposedChart
+                  data={chartData}
+                  margin={{ top: 36, right: 0, bottom: 8, left: 0 }}
+                >
+                  <XAxis
+                    type="number"
+                    dataKey="xHour"
+                    domain={[xMin, xMax]}
+                    hide
+                    height={0}
+                  />
+                  <YAxis
+                    type="number"
+                    domain={[STEP_Y_MIN, 300]}
+                    tick={{ fontSize: isVerySmallScreen ? 10 : 11 }}
+                    tickFormatter={(v) => (v < GLUCOSE_FLOOR ? "" : String(v))}
+                    allowDecimals={false}
+                    width={34}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          ) : null}
+          <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden">
+            <div className={isMobileScreen ? "h-full min-w-[38rem]" : "h-full w-full"}>
+              <ResponsiveContainer width="100%" height="100%" minWidth={280} minHeight={260}>
+                <ComposedChart data={chartData} margin={chartMargins}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e4ebea" />
             {showSteps ? (
               <ReferenceArea
@@ -895,36 +971,49 @@ export function DailyViewChart({ dateYmd }: Props) {
                 ? { niceTicks: "none" as const, padding: { left: 0, right: 0 } }
                 : {})}
             />
-            <YAxis
-              type="number"
-              domain={[STEP_Y_MIN, 300]}
-              tick={{ fontSize: 11 }}
-              tickFormatter={(v) => (v < GLUCOSE_FLOOR ? "" : String(v))}
-              allowDecimals={false}
-            />
+                {!isMobileScreen ? (
+                  <YAxis
+                    type="number"
+                    domain={[STEP_Y_MIN, 300]}
+                    tick={{ fontSize: isVerySmallScreen ? 10 : 11 }}
+                    tickFormatter={(v) => (v < GLUCOSE_FLOOR ? "" : String(v))}
+                    allowDecimals={false}
+                    width={40}
+                  />
+                ) : null}
 
-            <Tooltip content={CombinedDayTooltip} />
+                <Tooltip content={CombinedDayTooltip} />
 
-            {showSteps ? (
-              <Bar
-                dataKey="stepsRange"
-                fill="#94a3b8"
-                radius={[4, 4, 0, 0]}
-                maxBarSize={36}
-                isAnimationActive={false}
-              />
-            ) : null}
-            <Line
-              type="monotone"
-              dataKey="glucose"
-              connectNulls
-              stroke="#1b4d43"
-              strokeWidth={2}
-              dot={false}
-              isAnimationActive={false}
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
+                {showSteps ? (
+                  <Bar
+                    key={`steps-${chartSeriesAnimKey}`}
+                    dataKey="stepsRange"
+                    fill="#94a3b8"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={36}
+                    isAnimationActive={seriesAnimActive}
+                    animationDuration={520}
+                    animationEasing="ease-out"
+                  />
+                ) : null}
+                <Line
+                  key={`glucose-${chartSeriesAnimKey}`}
+                  type="monotone"
+                  dataKey="glucose"
+                  connectNulls
+                  stroke="#1b4d43"
+                  strokeWidth={2}
+                  dot={false}
+                  isAnimationActive={seriesAnimActive}
+                  animationDuration={840}
+                  animationEasing="ease-out"
+                  animationBegin={seriesAnimActive ? 90 : 0}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+          </div>
+        </div>
       </div>
     </section>
   );

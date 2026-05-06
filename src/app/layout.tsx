@@ -40,7 +40,7 @@ export default async function RootLayout({
 }>) {
   const { userId } = await auth();
   const userDemo = userId ? await getDeveloperDemoModeForUser(userId) : false;
-  const demoMode = isDemoModeEnabled() || userDemo;
+  const devModeBanner = isDemoModeEnabled() || userDemo;
 
   return (
     <html
@@ -49,7 +49,7 @@ export default async function RootLayout({
     >
       <body className="flex min-h-full flex-col bg-background">
         <ClerkProvider>
-          <AppHeader demoMode={demoMode} />
+          <AppHeader devModeBanner={devModeBanner} />
           <div className="flex min-h-0 flex-1 flex-col pb-[calc(3.25rem+env(safe-area-inset-bottom,0px))]">
             {children}
           </div>

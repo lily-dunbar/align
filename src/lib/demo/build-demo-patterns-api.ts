@@ -45,12 +45,12 @@ function stubTemporal(): PatternFeatureContext["temporal"] {
 function stubSteps(prefs: UserPreferences): PatternFeatureContext["steps"] {
   return {
     daysWithStepsAndGlucose: 21,
-    medianDailySteps: 9800,
-    meanDailyMgdlHighStepDays: 118,
-    meanDailyMgdlLowStepDays: 162,
+    medianDailySteps: 8200,
+    meanDailyMgdlHighStepDays: 117,
+    meanDailyMgdlLowStepDays: 165,
     daysHighStepBucket: 12,
     daysLowStepBucket: 9,
-    avgDailySteps: 9680,
+    avgDailySteps: 8120,
     stepsGoalPerDay: prefs.targetStepsPerDay,
     hasHourlyStepsData: true,
     stravaWorkoutCount: 10,
@@ -58,9 +58,9 @@ function stubSteps(prefs: UserPreferences): PatternFeatureContext["steps"] {
     activeDayStepsThreshold: 7000,
     daysMeanMgdlStepsGteThreshold: 12,
     daysMeanMgdlStepsLtThreshold: 9,
-    meanDailyMgdlStepsGteThreshold: 118,
-    meanDailyMgdlStepsLtThreshold: 162,
-    meanMgdlDeltaLessActiveMinusActive: 44,
+    meanDailyMgdlStepsGteThreshold: 117,
+    meanDailyMgdlStepsLtThreshold: 165,
+    meanMgdlDeltaLessActiveMinusActive: 48,
   };
 }
 
@@ -82,6 +82,36 @@ function calendarYmdIsWeekend(ymd: string): boolean {
   if (!Number.isFinite(y)) return false;
   const w = new Date(y, m - 1, d).getDay();
   return w === 0 || w === 6;
+}
+
+/** 0 Sun … 6 Sat (UTC noon anchor). */
+function weekdaySun0FromYmd(ymd: string): number {
+  const [y, m, d] = ymd.split("-").map(Number);
+  if (!Number.isFinite(y)) return 0;
+  return new Date(Date.UTC(y, m - 1, d, 12, 0, 0)).getUTCDay();
+}
+
+/**
+ * Scatter for learn-more: aligns with `buildDemoDayApiPayload` story — Mon/Wed/Fri runs + high steps
+ * and smoother means; Tue/Thu desk + higher post-lunch; weekends in between.
+ */
+function demoStepsAndMeanForYmd(ymd: string): { steps: number; meanMgdl: number } {
+  const sun0 = weekdaySun0FromYmd(ymd);
+  const salt = ymd.split("-").reduce((acc, x) => acc + Number(x), 0);
+  const monWedFri = sun0 === 1 || sun0 === 3 || sun0 === 5;
+  const tueThu = sun0 === 2 || sun0 === 4;
+
+  if (monWedFri) {
+    return { steps: 11300 + (salt % 7) * 120, meanMgdl: 117 + (salt % 5) * 1.6 };
+  }
+  if (tueThu) {
+    return { steps: 4700 + (salt % 5) * 130, meanMgdl: 160 + (salt % 6) * 1.9 };
+  }
+  const saturday = sun0 === 6;
+  return {
+    steps: saturday ? 8400 + (salt % 6) * 100 : 5050 + (salt % 5) * 80,
+    meanMgdl: saturday ? 128 + (salt % 5) * 1.7 : 148 + (salt % 4) * 1.6,
+  };
 }
 
 /** Aligns learn-more overlays with day-view demo: weekends messier, short-sleep dawn bump. */
@@ -124,10 +154,8 @@ function demoEvidence(rangeStartYmd: string, rangeEndYmd: string): PatternFeatur
   const days = eachYmdInclusive(rangeStartYmd, rangeEndYmd);
   const cgmDaysSample = [...days];
 
-  const dailyGlucoseSteps = days.map((ymd, i) => {
-    const highStep = i % 2 === 0;
-    const steps = highStep ? 9800 + (i % 5) * 100 : 4100 + (i % 4) * 140;
-    const meanMgdl = highStep ? 116 + (i % 3) : 158 + (i % 4);
+  const dailyGlucoseSteps = days.map((ymd) => {
+    const { steps, meanMgdl } = demoStepsAndMeanForYmd(ymd);
     return {
       ymd,
       meanMgdl: Math.round(meanMgdl * 10) / 10,
@@ -136,7 +164,12 @@ function demoEvidence(rangeStartYmd: string, rangeEndYmd: string): PatternFeatur
   });
 
   const sessionDeltas: PatternFeatureContext["evidence"]["sessionDeltas"] = [];
-  const runDays = days.filter((_, i) => i % 2 === 0).slice(0, 8);
+  const runDays = days
+    .filter((ymd) => {
+      const s = weekdaySun0FromYmd(ymd);
+      return s === 1 || s === 3 || s === 5;
+    })
+    .slice(0, 8);
   runDays.forEach((ymd, runI) => {
     sessionDeltas.push({
       deltaMgdl: Math.round((-78 - (runI % 4) * 4) * 10) / 10,
@@ -199,7 +232,7 @@ function stubFeatureContext(
       manualWorkoutsCount: 2,
       stravaActivitiesCount: 10,
       analysisHint:
-        "Demo — highlight midday lunch glucose peak, lower means on ≥7k-step days, and ~80 mg/dL drops on ~4 mi afternoon runs (Mon/Wed/Fri in stitched days).",
+        "Demo window — Home uses one scripted day shape (morning ramp, noon spike, afternoon plateau, evening run dip, night rebound); Patterns stitches multiple calendar days with light variation — compare day picker vs Patterns scatter.",
     },
     inclusion: {
       rangeStartYmd: "2026-01-01",
@@ -221,18 +254,18 @@ function demoPatterns(threshold: number): PatternInsightJson[] {
   const base: PatternInsightJson[] = [
     {
       id: "demo-temporal-lunch",
-      title: "Sharp climb around lunch, often peaking near 250 mg/dL",
+      title: "Sharp climb around noon, often peaking near 250 mg/dL",
       description:
-        "Dexcom by hour-of-day shows your clearest bump after lunch, with peaks clustering around ~noon in this demo window — think carbs, timing, or prebolus; align with food logs and your care team.",
+        "Dexcom by hour-of-day shows your clearest bump in this demo right after the noon fast-acting meal log, with the CGM crest between 12:00 and 12:30 inside the one-hour absorption window — think carbs, timing, or prebolus; align with food logs and your care team.",
       type: "Temporal",
       confidencePercent: 88,
       linkedSources: ["Dexcom"],
     },
     {
       id: "demo-steps-threshold",
-      title: "Often ~44 mg/dL lower on days over 7,000 steps",
+      title: "Often ~48 mg/dL lower on days over ~7,000 steps",
       description:
-        "In this demo, typical daily glucose is markedly lower when total steps clear ~7k — commute + afternoon movement line up with steadier days; meals and sleep still co-vary, so treat as a signal to explore.",
+        "Demo data stacks Mon/Wed/Fri’s run + commute against Tue/Thu desk days: averages fall on high-step days while post-lunch glide stays higher when movement is light. Real data will differ — this shows how Align links steps and CGM.",
       type: "Steps",
       confidencePercent: 82,
       linkedSources: ["Dexcom", "Apple Steps"],

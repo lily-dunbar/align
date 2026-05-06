@@ -42,14 +42,14 @@ export function SettingsDeveloperCard({
         body: JSON.stringify({ developerDemoMode: next } satisfies Partial<UserPreferences>),
       });
       const json = (await resp.json()) as { preferences?: UserPreferences; error?: string };
-      if (!resp.ok) throw new Error(json.error ?? "Could not update demo mode");
+      if (!resp.ok) throw new Error(json.error ?? "Could not update dev mode");
       if (json.preferences) setDemoMode(json.preferences.developerDemoMode);
       router.refresh();
       emitDayDataChanged();
       setMessage(
         next
-          ? "Demo mode on — home and Insights use sample CGM, steps, activity, and insights."
-          : "Demo mode off — your saved data shows again where connected.",
+          ? "Dev mode on — Home, Patterns, and day views use sample CGM, steps, workouts, and sleep."
+          : "Dev mode off — your saved data shows again where connected.",
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Update failed");
@@ -109,13 +109,13 @@ export function SettingsDeveloperCard({
   return (
     <section className="w-full rounded-2xl border border-align-border/80 bg-align-subtle/50 p-5 text-left ring-1 ring-black/[0.03]">
       <h2 className="text-lg font-semibold tracking-tight text-zinc-900">
-        {demoOnly ? "Demo preview" : "Developer"}
+        {demoOnly ? "Dev mode" : "Developer"}
       </h2>
       <p className="mt-1 text-sm text-zinc-600">
         {demoOnly ? (
           <>
-            Show sample CGM, steps, activity, patterns, and day insights — useful for walkthroughs. Your integrations
-            and saved data stay on; turn this off to see your live data again.
+            Turn on to preview the app with synthetic CGM, steps, workouts, and sleep (your integrations are unchanged).
+            Turn off anytime to return to your real data.
           </>
         ) : (
           <>
@@ -129,15 +129,17 @@ export function SettingsDeveloperCard({
       <div className="mt-4 space-y-4 border-t border-zinc-200 pt-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-medium text-zinc-900">Demo mode</p>
+            <p className="text-sm font-medium text-zinc-900">Dev mode</p>
             <p className="mt-0.5 text-xs text-zinc-500">
-              Banner plus synthetic daily chart, patterns, and day insights{" "}
+              Shows the yellow banner and loads sample data across Home and Patterns{" "}
               {!demoOnly ? (
                 <>
-                  (also when <code className="font-mono">DEMO_MODE</code> is set in env).
+                  (also if <code className="font-mono">DEMO_MODE</code> is set in env).
                 </>
               ) : (
-                "(site-wide demo env can also turn this on if configured)."
+                <>
+                  (site-wide <code className="font-mono">DEMO_MODE</code> can also show the banner).
+                </>
               )}
             </p>
           </div>
@@ -156,7 +158,7 @@ export function SettingsDeveloperCard({
                 demoMode ? "translate-x-5" : "translate-x-1"
               }`}
             />
-            <span className="sr-only">{demoMode ? "Demo mode on" : "Demo mode off"}</span>
+            <span className="sr-only">{demoMode ? "Dev mode on" : "Dev mode off"}</span>
           </button>
         </div>
 

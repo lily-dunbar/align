@@ -19,6 +19,24 @@ function formatWhen(iso: string | null) {
   }
 }
 
+function formatDateOnly(iso: string | null) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleDateString();
+  } catch {
+    return "—";
+  }
+}
+
+function formatTimeOnly(iso: string | null) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleTimeString();
+  } catch {
+    return "—";
+  }
+}
+
 function stepsSourceLabel(source: string) {
   switch (source) {
     case "apple_shortcuts":
@@ -82,13 +100,12 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
   const [stepsClientHints, setStepsClientHints] = useState<{
     browserOrigin: string | null;
     ingestOriginMismatch: boolean;
-    showLocalFilePull: boolean;
-  }>({ browserOrigin: null, ingestOriginMismatch: false, showLocalFilePull: false });
+  }>({ browserOrigin: null, ingestOriginMismatch: false });
+  const mostRecentIngest = initial.steps.recentRows[0] ?? null;
 
   useEffect(() => {
     const origin = readBrowserOrigin() || null;
     const host = window.location.hostname;
-    const showLocalFilePull = host === "localhost" || host === "127.0.0.1";
     let ingestOriginMismatch = false;
     const ingestUrl = stepsIngest?.ingestUrl;
     if (ingestUrl) {
@@ -110,7 +127,6 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
     setStepsClientHints({
       browserOrigin: origin,
       ingestOriginMismatch,
-      showLocalFilePull,
     });
   }, [stepsIngest?.ingestUrl]);
 
@@ -236,7 +252,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
       }
       setStepsIngest({ ingestUrl: json.ingestUrl, notes: json.notes ?? [] });
       setNotice(
-        "Your personal Shortcut URL is below — use it with an HTTP POST from Shortcuts (hosted Vercel cannot read files from your Mac or iCloud).",
+        "Your personal Shortcut URL is below — use POST from Apple Shortcuts to send step samples.",
       );
       router.refresh();
     } catch (e) {
@@ -269,72 +285,6 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
       router.refresh();
     } catch (e) {
       setNotice(e instanceof Error ? e.message : "Dexcom sync failed");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function syncShortcutsIcloudFile() {
-    setBusy("sync-shortcuts-file");
-    setNotice(null);
-    try {
-      const resp = await fetch("/api/import/health-sync", {
-        method: "POST",
-        credentials: "include",
-      });
-      const text = await resp.text();
-      let json: {
-        ok?: boolean;
-        error?: string;
-        steps?: number;
-        inserted?: number;
-        updated?: number;
-        unchanged?: number;
-        buckets?: number;
-        lineCount?: number;
-        filePath?: string;
-      } = {};
-      if (text) {
-        try {
-          json = JSON.parse(text) as typeof json;
-        } catch {
-          throw new Error(
-            resp.status === 401
-              ? "Sign in expired — refresh the page and try again."
-              : `Pull file failed (HTTP ${resp.status}). Response was not JSON — check the server terminal for errors.`,
-          );
-        }
-      }
-      if (!resp.ok) {
-        const detail = json.filePath ? ` (${json.filePath})` : "";
-        throw new Error((json.error ?? "Shortcuts file sync failed") + detail);
-      }
-      if (json.lineCount != null) {
-        setNotice(
-          `Pulled ${json.filePath ? `${json.filePath} · ` : ""}${json.lineCount} lines → ${json.buckets ?? 0} hourly buckets (${json.inserted ?? 0} new, ${json.updated ?? 0} updated, ${json.unchanged ?? 0} unchanged). Steps today (CSV zone): ${json.steps ?? 0}.`,
-        );
-      } else {
-        setNotice(
-          `Pulled ${json.filePath ? `${json.filePath} · ` : ""}digit-only file → ${json.steps ?? 0} steps (midnight bucket in CSV timezone).`,
-        );
-      }
-      router.refresh();
-    } catch (e) {
-      setNotice(e instanceof Error ? e.message : "Shortcuts file sync failed");
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function refreshStepsIngestUrl() {
-    setBusy("refresh-steps-url");
-    setNotice(null);
-    try {
-      await fetchStepsIngestInfo();
-      setNotice("Loaded your personal ingest URL from the server.");
-      router.refresh();
-    } catch (e) {
-      setNotice(e instanceof Error ? e.message : "Could not load ingest URL");
     } finally {
       setBusy(null);
     }
@@ -549,20 +499,15 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                       </span>
                     ) : (
                       <span className="mt-2 block text-amber-800/90">
-                        No hourly step rows yet — run your Shortcut (POST) or pull a local file (dev).
+                        No hourly step rows yet — run your Shortcut (POST) to ingest steps.
                       </span>
                     )}
                   </>
                 ) : (
                   <>
-                    <span className="font-medium text-zinc-700">Hosted (e.g. Vercel):</span> use Apple
-                    Shortcuts to POST step data to your personal URL after you connect — the server
-                    cannot read <code className="rounded bg-zinc-100 px-1 text-[10px]">Timestamp, Steps.txt</code>{" "}
-                    from iCloud. <span className="font-medium text-zinc-700">Local dev only:</span>{" "}
-                    Pull file reads{" "}
-                    <code className="rounded bg-zinc-100 px-1 text-[10px]">ICLOUD_STEPS_JSON_PATH</code> /{" "}
-                    <code className="rounded bg-zinc-100 px-1 text-[10px]">SHORTCUTS_STEPS_FILE_PATH</code> on
-                    the machine running this app.
+                    Apple Shortcuts must{" "}
+                    <span className="font-medium text-zinc-700">POST</span> step data to your personal ingest URL after
+                    you connect. The app does not pull step files from your phone or iCloud.
                   </>
                 )}
               </p>
@@ -588,26 +533,6 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                   >
                     View latest ingest
                   </button>
-                  <button
-                    type="button"
-                    title="Loads your latest personal URL from GET /api/ingest/steps/token (same link Shortcuts uses for POST)."
-                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
-                    disabled={busy !== null}
-                    onClick={() => void refreshStepsIngestUrl()}
-                  >
-                    {busy === "refresh-steps-url" ? "Loading…" : "Refresh URL"}
-                  </button>
-                  {stepsClientHints.showLocalFilePull ? (
-                    <button
-                      type="button"
-                      title="Reads SHORTCUTS_STEPS_FILE_PATH on the machine running this app (local dev)."
-                      className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
-                      disabled={busy !== null}
-                      onClick={() => void syncShortcutsIcloudFile()}
-                    >
-                      {busy === "sync-shortcuts-file" ? "Syncing…" : "Pull local file"}
-                    </button>
-                  ) : null}
                   <button
                     type="button"
                     className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-700 transition hover:bg-red-50 disabled:opacity-50"
@@ -680,7 +605,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                       className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950"
                       role="status"
                     >
-                      <p className="font-medium">This URL looks like localhost but you&apos;re on a live site</p>
+                      <p className="font-medium">Ingest URL host doesn&apos;t match this site</p>
                       <p className="mt-1 text-amber-900/90">
                         Set <code className="rounded bg-amber-100/80 px-1">AUTH_URL</code> to{" "}
                         <span className="font-mono font-semibold">
@@ -711,7 +636,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                             window.setTimeout(() => setCopyFlash(false), 2000);
                             router.refresh();
                           } catch {
-                            setNotice("Could not load the latest URL. Try Refresh URL, then copy again.");
+                            setNotice("Could not load the latest URL. Open Set up below and tap Copy URL again.");
                           } finally {
                             setBusy(null);
                           }
@@ -779,7 +704,30 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
               {initial.steps.recentRows.length === 0 ? (
                 <p>No ingest rows yet.</p>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-3">
+                  <div className="rounded-md border border-emerald-200 bg-emerald-50/70 p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
+                      Most recent ingest
+                    </p>
+                    <div className="mt-1.5 grid grid-cols-1 gap-1 text-zinc-800 sm:grid-cols-2">
+                      <p>
+                        <span className="font-medium">Date:</span>{" "}
+                        {formatDateOnly(mostRecentIngest?.receivedAtIso ?? null)}
+                      </p>
+                      <p>
+                        <span className="font-medium">Timestamp:</span>{" "}
+                        {formatTimeOnly(mostRecentIngest?.receivedAtIso ?? null)}
+                      </p>
+                      <p>
+                        <span className="font-medium">Step count:</span>{" "}
+                        {mostRecentIngest?.stepCount?.toLocaleString() ?? "—"}
+                      </p>
+                      <p>
+                        <span className="font-medium">Source:</span>{" "}
+                        {mostRecentIngest ? stepsSourceLabel(mostRecentIngest.source) : "—"}
+                      </p>
+                    </div>
+                  </div>
                   {initial.steps.recentRows.map((row, idx) => (
                     <div key={`${row.receivedAtIso}-${idx}`} className="rounded-md border border-zinc-200 p-2">
                       <p>

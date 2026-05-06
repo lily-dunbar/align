@@ -117,7 +117,7 @@ export function DateNav({ initialDateYmd }: Props) {
           <button
             type="button"
             onClick={openAddActivityModal}
-            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full border border-align-forest/20 bg-white px-4 py-2 text-sm font-semibold text-align-forest shadow-sm shadow-black/[0.04] transition hover:border-align-forest/35 hover:bg-align-subtle"
+            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full bg-align-forest px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted"
           >
             <span aria-hidden>+</span>
             <span>Add Activity</span>

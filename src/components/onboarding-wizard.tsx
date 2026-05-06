@@ -18,6 +18,33 @@ import {
 
 const STEPS = ["dexcom", "strava", "steps", "display", "targets"] as const;
 export type OnboardingStepId = (typeof STEPS)[number];
+const STEP_META: Record<OnboardingStepId, { title: string; emoji: string; blurb: string }> = {
+  dexcom: {
+    title: "Connect Dexcom",
+    emoji: "🩸",
+    blurb: "Link your CGM so Align can import glucose readings.",
+  },
+  strava: {
+    title: "Connect Strava",
+    emoji: "🏃",
+    blurb: "Optional - import workouts for Insights and your daily chart.",
+  },
+  steps: {
+    title: "Apple Steps",
+    emoji: "👟",
+    blurb: "Optional - create an ingest URL for Shortcuts, or add this later in Settings.",
+  },
+  display: {
+    title: "Home chart",
+    emoji: "📊",
+    blurb: "Choose which layers appear on your 24-hour timeline.",
+  },
+  targets: {
+    title: "Targets",
+    emoji: "🎯",
+    blurb: "Set your glucose range, TIR goal, and daily steps.",
+  },
+};
 
 function isStepId(s: string | null): s is OnboardingStepId {
   return s !== null && (STEPS as readonly string[]).includes(s);
@@ -60,6 +87,8 @@ export function OnboardingWizard({ initialPrefs }: { initialPrefs: UserPreferenc
   const router = useRouter();
   const searchParams = useSearchParams();
   const rawStep = searchParams.get("step");
+  const stravaOauthError = searchParams.get("strava_error");
+  const dexcomOauthError = searchParams.get("dexcom_error");
   const step: OnboardingStepId = isStepId(rawStep) ? rawStep : "dexcom";
 
   const [prefs, setPrefs] = useState(initialPrefs);
@@ -150,16 +179,24 @@ export function OnboardingWizard({ initialPrefs }: { initialPrefs: UserPreferenc
   }
 
   const idx = STEPS.indexOf(step) + 1;
+  const progress = (idx / STEPS.length) * 100;
+  const stepMeta = STEP_META[step];
 
   const dexcomReturn = encodeURIComponent("/onboarding?step=strava");
   const stravaReturn = encodeURIComponent("/onboarding?step=steps");
 
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-3.5rem)] w-full max-w-lg flex-col justify-center px-4 py-10 md:min-h-[calc(100dvh-4rem)] md:py-14">
-      <p className="text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+      <p className="text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
         Step {idx} of {STEPS.length}
       </p>
-      <h1 className="mt-3 text-center text-[1.65rem] font-semibold leading-tight tracking-tight text-zinc-900 md:text-3xl">
+      <div className="mx-auto mt-2 h-2 w-full max-w-xs overflow-hidden rounded-full bg-white/70 ring-1 ring-black/[0.05]">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-[#1b4d43] via-[#2d6f61] to-[#d9b24c] transition-all duration-300"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <h1 className="mt-4 text-center text-[1.65rem] font-semibold leading-tight tracking-tight text-zinc-900 md:text-3xl">
         Welcome to Align
       </h1>
 
@@ -168,8 +205,21 @@ export function OnboardingWizard({ initialPrefs }: { initialPrefs: UserPreferenc
           {error}
         </p>
       ) : null}
+      {!error && (stravaOauthError || dexcomOauthError) ? (
+        <p className="mt-6 rounded-xl border border-red-200/80 bg-red-50/90 px-4 py-3 text-sm text-red-800">
+          {dexcomOauthError ? `Dexcom connection failed: ${dexcomOauthError}.` : null}
+          {dexcomOauthError && stravaOauthError ? " " : null}
+          {stravaOauthError ? `Strava connection failed: ${stravaOauthError}.` : null}
+        </p>
+      ) : null}
 
-      <div className="mt-9 rounded-2xl border border-white/80 bg-white/90 p-6 shadow-[0_12px_48px_-16px_rgba(27,77,67,0.14)] ring-1 ring-black/[0.04] backdrop-blur-sm md:mt-10 md:p-8">
+      <div className="mt-9 rounded-3xl border border-white/80 bg-white/92 p-6 shadow-[0_18px_54px_-18px_rgba(27,77,67,0.24)] ring-1 ring-black/[0.04] backdrop-blur-sm md:mt-10 md:p-8">
+        <div className="mb-5 rounded-2xl border border-zinc-100 bg-gradient-to-br from-white to-align-subtle/45 px-4 py-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
+            {stepMeta.emoji} {stepMeta.title}
+          </p>
+          <p className="mt-1 text-sm text-zinc-600">{stepMeta.blurb}</p>
+        </div>
         {step === "dexcom" ? (
           <div className="space-y-5">
             <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Connect Dexcom</h2>

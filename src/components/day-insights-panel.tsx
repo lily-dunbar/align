@@ -613,24 +613,13 @@ export function DayInsightsPanel({ dateYmd }: Props) {
 
   return (
     <section
-      className="w-full rounded-2xl border border-align-border/90 bg-white/90 p-5 ring-1 ring-black/[0.03] backdrop-blur-[2px] md:p-6"
+      className="w-full rounded-2xl border border-align-border/90 bg-white/95 p-5 ring-1 ring-black/[0.03] md:p-6"
       aria-busy={loading}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="min-w-0 text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
           Activities
         </h2>
-        <button
-          type="button"
-          className="rounded-full border border-zinc-200 bg-zinc-100 px-3 py-1.5 text-sm font-semibold text-zinc-800 shadow-sm shadow-black/[0.03] transition hover:bg-zinc-200 active:scale-[0.99]"
-          onClick={() =>
-            window.dispatchEvent(
-              new CustomEvent(OPEN_MANUAL_MODAL_EVENT, { detail: { tab: "activity" } }),
-            )
-          }
-        >
-          Add activity
-        </button>
       </div>
       {error ? (
         <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
@@ -645,7 +634,7 @@ export function DayInsightsPanel({ dateYmd }: Props) {
           {activities.map((item) => (
             <li
               key={item.id}
-              className={`overflow-hidden rounded-xl border border-align-border/70 bg-gradient-to-br from-white to-align-subtle/40 shadow-sm shadow-black/[0.04] ring-1 ring-black/[0.04] transition hover:border-align-border/90 hover:shadow-md ${KIND_ACCENT_CLASS[item.kind]}`}
+              className={`overflow-hidden rounded-xl border border-align-border/75 bg-white shadow-sm shadow-black/[0.03] ring-1 ring-black/[0.025] transition hover:border-align-border hover:shadow-md ${KIND_ACCENT_CLASS[item.kind]}`}
             >
               <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                 <div className="min-w-0 flex-1 space-y-3">

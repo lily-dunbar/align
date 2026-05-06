@@ -115,38 +115,45 @@ export async function GET(request: NextRequest) {
       ? new Date(Date.now() + tokenJson.expires_in * 1000)
       : null;
 
-  await db
-    .insert(user)
-    .values({
-      id: parsedState.userId,
-      name: "Clerk User",
-      email: null,
-      emailVerified: null,
-      image: null,
-    })
-    .onConflictDoNothing({ target: user.id });
-
-  const existing = await db.query.stravaTokens.findFirst({
-    where: eq(stravaTokens.userId, parsedState.userId),
-    columns: { userId: true },
-  });
-
-  const values = {
-    athleteId: tokenJson.athlete?.id ? String(tokenJson.athlete.id) : null,
-    accessToken: tokenJson.access_token,
-    refreshToken: tokenJson.refresh_token ?? null,
-    expiresAt,
-    scope: tokenJson.scope ?? null,
-    tokenType: tokenJson.token_type ?? null,
-  };
-
-  if (existing) {
+  try {
     await db
-      .update(stravaTokens)
-      .set({ ...values, updatedAt: new Date() })
-      .where(eq(stravaTokens.userId, parsedState.userId));
-  } else {
-    await db.insert(stravaTokens).values({ userId: parsedState.userId, ...values });
+      .insert(user)
+      .values({
+        id: parsedState.userId,
+        name: "Clerk User",
+        email: null,
+        emailVerified: null,
+        image: null,
+      })
+      .onConflictDoNothing({ target: user.id });
+
+    const existing = await db.query.stravaTokens.findFirst({
+      where: eq(stravaTokens.userId, parsedState.userId),
+      columns: { userId: true },
+    });
+
+    const values = {
+      athleteId: tokenJson.athlete?.id ? String(tokenJson.athlete.id) : null,
+      accessToken: tokenJson.access_token,
+      refreshToken: tokenJson.refresh_token ?? null,
+      expiresAt,
+      scope: tokenJson.scope ?? null,
+      tokenType: tokenJson.token_type ?? null,
+    };
+
+    if (existing) {
+      await db
+        .update(stravaTokens)
+        .set({ ...values, updatedAt: new Date() })
+        .where(eq(stravaTokens.userId, parsedState.userId));
+    } else {
+      await db.insert(stravaTokens).values({ userId: parsedState.userId, ...values });
+    }
+  } catch {
+    const path = sanitizeOAuthReturnTo(parsedState.returnTo) ?? "/";
+    return redirectWithStravaQuery(appBase, path, {
+      strava_error: "db_unavailable",
+    });
   }
 
   const pathOk = sanitizeOAuthReturnTo(parsedState.returnTo) ?? "/";

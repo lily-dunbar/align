@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { useEffectiveTimeZone } from "@/hooks/use-effective-timezone";
+import { OPEN_MANUAL_MODAL_EVENT } from "@/lib/day-view-events";
 import { getLocalCalendarYmd } from "@/lib/local-calendar-ymd";
 import { useResolvedDayYmd } from "@/lib/use-resolved-day-ymd";
 
@@ -55,57 +56,71 @@ export function DateNav({ initialDateYmd }: Props) {
     router.push(`${pathname}?${qp.toString()}`);
   }
 
+  function openAddActivityModal() {
+    window.dispatchEvent(new CustomEvent(OPEN_MANUAL_MODAL_EVENT, { detail: { tab: "activity" } }));
+  }
+
   return (
     <section className="w-full" aria-label="Day navigation">
       <div className="py-0.5">
-        <div className="grid w-full grid-cols-[minmax(0,1fr)_minmax(0,2.85fr)_minmax(0,1fr)] items-center gap-1.5">
-          <button
-            type="button"
-            className="flex min-h-11 w-full items-center justify-center rounded-full border border-transparent px-2.5 py-2 text-sm text-zinc-700 transition hover:bg-align-subtle sm:px-3"
-            onClick={() => setDate(addDays(selectedDate, -1))}
-          >
-            ← Prev
-          </button>
-          <label className="flex min-h-11 min-w-0 w-full items-center gap-2 text-sm">
-            <input
-              ref={dateInputRef}
-              type="date"
-              value={selectedDate}
-              max={todayYmd}
-              onChange={(e) => setDate(e.target.value)}
-              className="sr-only"
-              aria-hidden
-              tabIndex={-1}
-            />
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1.5 sm:max-w-md">
             <button
               type="button"
-              onClick={() => {
-                const input = dateInputRef.current;
-                if (!input) return;
-                const pickerInput = input as HTMLInputElement & {
-                  showPicker?: () => void;
-                };
-                if (typeof pickerInput.showPicker === "function") {
-                  pickerInput.showPicker();
-                } else {
-                  input.focus();
-                }
-              }}
-              className="min-h-11 w-full min-w-0 rounded-xl border border-align-border bg-white px-3 py-2 text-center text-sm text-zinc-800 shadow-sm shadow-black/5"
-              aria-label="Choose date"
+              className="flex min-h-11 items-center justify-center rounded-full border border-transparent px-2.5 py-2 text-sm text-zinc-700 transition hover:bg-align-subtle sm:px-3"
+              onClick={() => setDate(addDays(selectedDate, -1))}
             >
-              <span className="block truncate">{dateLabel}</span>
+              ← Prev
             </button>
-          </label>
+            <label className="flex min-h-11 min-w-0 w-full items-center gap-2 text-sm">
+              <input
+                ref={dateInputRef}
+                type="date"
+                value={selectedDate}
+                max={todayYmd}
+                onChange={(e) => setDate(e.target.value)}
+                className="sr-only"
+                aria-hidden
+                tabIndex={-1}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const input = dateInputRef.current;
+                  if (!input) return;
+                  const pickerInput = input as HTMLInputElement & {
+                    showPicker?: () => void;
+                  };
+                  if (typeof pickerInput.showPicker === "function") {
+                    pickerInput.showPicker();
+                  } else {
+                    input.focus();
+                  }
+                }}
+                className="min-h-11 w-full min-w-0 rounded-xl border border-align-border bg-white px-3 py-2 text-center text-sm text-zinc-800 shadow-sm shadow-black/5"
+                aria-label="Choose date"
+              >
+                <span className="block truncate">{dateLabel}</span>
+              </button>
+            </label>
+            <button
+              type="button"
+              disabled={isAtLatestDay}
+              aria-disabled={isAtLatestDay}
+              title={isAtLatestDay ? "Already on the latest day you can view" : undefined}
+              className="flex min-h-11 items-center justify-center rounded-full border border-transparent px-2.5 py-2 text-sm text-zinc-700 transition hover:bg-align-subtle disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent sm:px-3"
+              onClick={() => setDate(addDays(selectedDate, 1))}
+            >
+              Next →
+            </button>
+          </div>
           <button
             type="button"
-            disabled={isAtLatestDay}
-            aria-disabled={isAtLatestDay}
-            title={isAtLatestDay ? "Already on the latest day you can view" : undefined}
-            className="flex min-h-11 w-full items-center justify-center rounded-full border border-transparent px-2.5 py-2 text-sm text-zinc-700 transition hover:bg-align-subtle disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent sm:px-3"
-            onClick={() => setDate(addDays(selectedDate, 1))}
+            onClick={openAddActivityModal}
+            className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-full border border-align-forest/20 bg-white px-4 py-2 text-sm font-semibold text-align-forest shadow-sm shadow-black/[0.04] transition hover:border-align-forest/35 hover:bg-align-subtle"
           >
-            Next →
+            <span aria-hidden>+</span>
+            <span>Add Activity</span>
           </button>
         </div>
       </div>

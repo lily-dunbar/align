@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition, type ReactNode } from "react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
 
 import { PatternRangeFilters } from "@/components/pattern-range-filters";
 import {
@@ -28,14 +28,24 @@ export function PatternsInsightsShell({
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [pendingWindow, setPendingWindow] = useState<PatternWindow | null>(null);
+
+  useEffect(() => {
+    if (pendingWindow === activeWindow) {
+      setPendingWindow(null);
+    }
+  }, [activeWindow, pendingWindow]);
 
   function navigate(next: PatternWindow) {
     if (next === activeWindow) return;
+    setPendingWindow(next);
     const href = `/patterns?window=${next}&timeZone=${encodeURIComponent(timeZone)}`;
     startTransition(() => {
       router.push(href);
     });
   }
+
+  const showLoadingState = isPending || pendingWindow !== null;
 
   return (
     <div className="flex flex-col gap-8">
@@ -44,14 +54,14 @@ export function PatternsInsightsShell({
           active={activeWindow}
           timeZone={timeZone}
           onWindowChange={navigate}
-          navigationPending={isPending}
+          navigationPending={showLoadingState}
         />
-        {isPending ? <PatternInclusionLineSkeleton /> : inclusion}
+        {showLoadingState ? <PatternInclusionLineSkeleton /> : inclusion}
       </div>
 
-      {isPending ? <PatternWindowSummaryCardsSkeleton /> : summaries}
+      {showLoadingState ? <PatternWindowSummaryCardsSkeleton /> : summaries}
 
-      {isPending ? <PatternsTakeawaysSectionSkeleton /> : takeaways}
+      {showLoadingState ? <PatternsTakeawaysSectionSkeleton /> : takeaways}
     </div>
   );
 }

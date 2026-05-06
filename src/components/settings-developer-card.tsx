@@ -43,14 +43,14 @@ export function SettingsDeveloperCard({
         body: JSON.stringify({ developerDemoMode: next } satisfies Partial<UserPreferences>),
       });
       const json = (await resp.json()) as { preferences?: UserPreferences; error?: string };
-      if (!resp.ok) throw new Error(json.error ?? "Could not update dev mode");
+      if (!resp.ok) throw new Error(json.error ?? "Could not update demo mode");
       if (json.preferences) setDemoMode(json.preferences.developerDemoMode);
       router.refresh();
       emitDayDataChanged();
       setMessage(
         next
-          ? "Dev mode on — Home, Patterns, and day views use sample CGM, steps, workouts, and sleep."
-          : "Dev mode off — your saved data shows again where connected.",
+          ? "Demo mode on — Home, Patterns, and day views use sample CGM, steps, workouts, and sleep."
+          : "Demo mode off — your saved data shows again where connected.",
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Update failed");
@@ -110,13 +110,13 @@ export function SettingsDeveloperCard({
   return (
     <section className="w-full rounded-2xl border border-align-border/90 bg-white/90 p-5 text-left ring-1 ring-black/[0.03]">
       <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
-        {demoOnly ? "Dev mode" : "Developer"}
+        {demoOnly ? "Demo mode" : "Developer"}
       </h2>
 
       <div className="mt-4 divide-y divide-zinc-100 rounded-xl border border-zinc-100 bg-zinc-50/50">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-4 py-3.5">
           <div className="min-w-0">
-            <p className="text-sm font-medium text-zinc-900">Dev mode</p>
+            <p className="text-sm font-medium text-zinc-900">Demo mode</p>
             <p className="mt-0.5 text-xs text-zinc-500">
               Shows the yellow banner and loads sample data across Home and Patterns. Turn off anytime to use
               your real data on this device.

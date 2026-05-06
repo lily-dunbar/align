@@ -12,9 +12,12 @@ function shouldIgnoreRuntimeDdlError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const message =
     "message" in error && typeof error.message === "string" ? error.message : "";
+  const code = "code" in error && typeof error.code === "string" ? error.code : "";
   return (
+    code === "53300" ||
     message.includes("planLimitReached") ||
-    message.includes("Failed to identify your database")
+    message.includes("Failed to identify your database") ||
+    message.includes("too many connections")
   );
 }
 

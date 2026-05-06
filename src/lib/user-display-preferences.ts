@@ -219,7 +219,6 @@ export async function getDeveloperDemoModeForUser(userId: string): Promise<boole
 
 export async function getUserPreferences(userId: string): Promise<UserPreferences> {
   try {
-    await ensureLocalUser(userId);
     await ensureUserDisplayPrefsDexcomBackfillColumn();
     const existing = await db.query.userDisplayPreferences.findFirst({
       where: eq(userDisplayPreferences.userId, userId),
@@ -228,6 +227,7 @@ export async function getUserPreferences(userId: string): Promise<UserPreference
       return rowToPreferences(existing);
     }
 
+    await ensureLocalUser(userId);
     const [created] = await db
       .insert(userDisplayPreferences)
       .values({

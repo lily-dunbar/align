@@ -88,57 +88,107 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(demoPayload);
   }
 
-  const [glucose, steps, workouts, food, sleep, stravaActivities] = await Promise.all([
-    db.query.glucoseReadings.findMany({
-      where: and(
-        eq(glucoseReadings.userId, userId),
-        gte(glucoseReadings.observedAt, startUtc),
-        lt(glucoseReadings.observedAt, endUtcExclusive),
-      ),
-      orderBy: [asc(glucoseReadings.observedAt)],
-    }),
-    db.query.hourlySteps.findMany({
-      where: and(
-        eq(hourlySteps.userId, userId),
-        gte(hourlySteps.bucketStart, startUtc),
-        lt(hourlySteps.bucketStart, endUtcExclusive),
-      ),
-      orderBy: [asc(hourlySteps.bucketStart)],
-    }),
-    db.query.manualWorkouts.findMany({
-      where: and(
-        eq(manualWorkouts.userId, userId),
-        gte(manualWorkouts.startedAt, startUtc),
-        lt(manualWorkouts.startedAt, endUtcExclusive),
-      ),
-      orderBy: [asc(manualWorkouts.startedAt)],
-    }),
-    db.query.foodEntries.findMany({
-      where: and(
-        eq(foodEntries.userId, userId),
-        gte(foodEntries.eatenAt, startUtc),
-        lt(foodEntries.eatenAt, endUtcExclusive),
-      ),
-      orderBy: [asc(foodEntries.eatenAt)],
-    }),
-    db.query.sleepWindows.findMany({
-      where: and(
-        eq(sleepWindows.userId, userId),
-        lt(sleepWindows.sleepStart, endUtcExclusive),
-        gte(sleepWindows.sleepEnd, startUtc),
-      ),
-      orderBy: [asc(sleepWindows.sleepStart)],
-    }),
-    db.query.activities.findMany({
-      where: and(
-        eq(activities.userId, userId),
-        eq(activities.provider, "strava"),
-        gte(activities.startAt, startUtc),
-        lt(activities.startAt, endUtcExclusive),
-      ),
-      orderBy: [asc(activities.startAt)],
-    }),
-  ]);
+  let glucose: Awaited<ReturnType<typeof db.query.glucoseReadings.findMany>> = [];
+  let steps: Awaited<ReturnType<typeof db.query.hourlySteps.findMany>> = [];
+  let workouts: Awaited<ReturnType<typeof db.query.manualWorkouts.findMany>> = [];
+  let food: Awaited<ReturnType<typeof db.query.foodEntries.findMany>> = [];
+  let sleep: Awaited<ReturnType<typeof db.query.sleepWindows.findMany>> = [];
+  let stravaActivities: Awaited<ReturnType<typeof db.query.activities.findMany>> = [];
+
+  try {
+    [glucose, steps, workouts, food, sleep, stravaActivities] = await Promise.all([
+      db.query.glucoseReadings.findMany({
+        where: and(
+          eq(glucoseReadings.userId, userId),
+          gte(glucoseReadings.observedAt, startUtc),
+          lt(glucoseReadings.observedAt, endUtcExclusive),
+        ),
+        columns: {
+          observedAt: true,
+          mgdl: true,
+        },
+        orderBy: [asc(glucoseReadings.observedAt)],
+      }),
+      db.query.hourlySteps.findMany({
+        where: and(
+          eq(hourlySteps.userId, userId),
+          gte(hourlySteps.bucketStart, startUtc),
+          lt(hourlySteps.bucketStart, endUtcExclusive),
+        ),
+        columns: {
+          bucketStart: true,
+          stepCount: true,
+          source: true,
+          receivedAt: true,
+        },
+        orderBy: [asc(hourlySteps.bucketStart)],
+      }),
+      db.query.manualWorkouts.findMany({
+        where: and(
+          eq(manualWorkouts.userId, userId),
+          gte(manualWorkouts.startedAt, startUtc),
+          lt(manualWorkouts.startedAt, endUtcExclusive),
+        ),
+        columns: {
+          id: true,
+          startedAt: true,
+          endedAt: true,
+          durationMin: true,
+          workoutType: true,
+        },
+        orderBy: [asc(manualWorkouts.startedAt)],
+      }),
+      db.query.foodEntries.findMany({
+        where: and(
+          eq(foodEntries.userId, userId),
+          gte(foodEntries.eatenAt, startUtc),
+          lt(foodEntries.eatenAt, endUtcExclusive),
+        ),
+        columns: {
+          id: true,
+          eatenAt: true,
+          title: true,
+          notes: true,
+          carbsGrams: true,
+          calories: true,
+        },
+        orderBy: [asc(foodEntries.eatenAt)],
+      }),
+      db.query.sleepWindows.findMany({
+        where: and(
+          eq(sleepWindows.userId, userId),
+          lt(sleepWindows.sleepStart, endUtcExclusive),
+          gte(sleepWindows.sleepEnd, startUtc),
+        ),
+        columns: {
+          id: true,
+          sleepStart: true,
+          sleepEnd: true,
+        },
+        orderBy: [asc(sleepWindows.sleepStart)],
+      }),
+      db.query.activities.findMany({
+        where: and(
+          eq(activities.userId, userId),
+          eq(activities.provider, "strava"),
+          gte(activities.startAt, startUtc),
+          lt(activities.startAt, endUtcExclusive),
+        ),
+        columns: {
+          id: true,
+          startAt: true,
+          endAt: true,
+          durationSec: true,
+          sportType: true,
+          activityType: true,
+          distanceMeters: true,
+        },
+        orderBy: [asc(activities.startAt)],
+      }),
+    ]);
+  } catch (error) {
+    console.warn("Day API DB unavailable; returning empty streams.", error);
+  }
 
   const tir = calculateTir(
     glucose.map((g) => ({ observedAt: g.observedAt, mgdl: g.mgdl })),

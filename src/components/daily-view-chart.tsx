@@ -138,7 +138,7 @@ const STEP_Y_MAX = GLUCOSE_FLOOR;
 /** Smallest fraction of the step band used when an hour has steps (improves visibility for low counts). */
 const STEP_BAR_MIN_FRACTION = 0.14;
 const BG_AXIS_TICKS = [60, 120, 180, 240, 300] as const;
-const MOBILE_BG_AXIS_WIDTH = 52;
+const MOBILE_BG_AXIS_WIDTH = 46;
 
 /** Sleep window shading; only overlaps real sleep vs viewed day (handles midnight crossing). */
 const SLEEP_BAND_FILL = "#DAE6E5";
@@ -882,42 +882,24 @@ export function DailyViewChart({ dateYmd }: Props) {
           {isMobileScreen ? (
             <div
               className={`flex h-full shrink-0 flex-col border-r border-black/[0.06] bg-gradient-to-b from-align-subtle/90 to-align-canvas/40 ${
-                isVerySmallScreen ? "w-12" : "w-11"
+                isVerySmallScreen ? "w-14" : "w-12"
               }`}
               aria-hidden
             >
-              <ResponsiveContainer width="100%" height="100%" minHeight={260}>
-                <ComposedChart
-                  data={chartData}
-                  margin={{ top: 36, right: 0, bottom: 8, left: 0 }}
-                >
-                  <XAxis
-                    type="number"
-                    dataKey="xHour"
-                    domain={[xMin, xMax]}
-                    hide
-                    height={0}
-                  />
-                  <YAxis
-                    type="number"
-                    domain={[STEP_Y_MIN, 300]}
-                    ticks={[...BG_AXIS_TICKS]}
-                    tick={{
-                      fontSize: isVerySmallScreen ? 10 : 11,
-                      fill: "#4b5563",
-                      fontWeight: 500,
-                    }}
-                    tickFormatter={(v) => String(v)}
-                    tickLine={false}
-                    axisLine={false}
-                    interval={0}
-                    mirror
-                    allowDecimals={false}
-                    tickMargin={8}
-                    width={MOBILE_BG_AXIS_WIDTH}
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
+              <div className="relative h-full w-full pt-9 pb-3">
+                {BG_AXIS_TICKS.map((tick) => {
+                  const topPct = ((300 - tick) / (300 - STEP_Y_MIN)) * 100;
+                  return (
+                    <span
+                      key={tick}
+                      className="absolute right-1 -translate-y-1/2 text-[10px] font-semibold tabular-nums text-zinc-600"
+                      style={{ top: `${topPct}%` }}
+                    >
+                      {tick}
+                    </span>
+                  );
+                })}
+              </div>
             </div>
           ) : null}
           <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 
 function readBrowserOrigin(): string {
   if (typeof window === "undefined") return "";
@@ -50,6 +50,8 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
   const [notice, setNotice] = useState<string | null>(null);
   const [stepsIngest, setStepsIngest] = useState<StepsIngestInfo | null>(null);
   const [copyFlash, setCopyFlash] = useState(false);
+  const [stepsSetupOpen, setStepsSetupOpen] = useState(false);
+  const stepsSetupPanelId = useId();
   const [stepsClientHints, setStepsClientHints] = useState<{
     browserOrigin: string | null;
     ingestOriginMismatch: boolean;
@@ -511,7 +513,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
               ) : null}
               <button
                 type="button"
-                title="Sync steps from a Shortcuts export file on the machine running this app (local dev). Not available on hosted Vercel without that file path in env."
+                title="Reads SHORTCUTS_STEPS_FILE_PATH from the machine running this app (your Mac with npm run dev). On Vercel, use Apple Steps → Set up and POST from Shortcuts instead—not this button."
                 className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
                 disabled={busy !== null}
                 onClick={() => void syncShortcutsIcloudFile()}
@@ -531,114 +533,117 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
             </div>
           </div>
           {initial.steps.connected && stepsIngest ? (
-            <details className="mt-3 w-full min-w-0 rounded-lg border border-emerald-200/80 bg-white/90 text-xs text-zinc-700 open:shadow-sm open:ring-1 open:ring-emerald-200/40 open:[&_summary_svg]:rotate-180">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium text-zinc-900 [&::-webkit-details-marker]:hidden">
-                <span className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-2">
-                  <span>Set Up</span>
-                  <span className="text-[11px] font-normal text-zinc-500">
-                    Shortcuts, URL, and hosting notes
-                  </span>
-                </span>
-                <svg
-                  className="h-4 w-4 shrink-0 text-zinc-500 transition-transform duration-200"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
+            <div className="mt-3 w-full min-w-0 border-t border-align-border-soft pt-3 text-xs text-zinc-700">
+              <button
+                type="button"
+                aria-expanded={stepsSetupOpen}
+                aria-controls={stepsSetupPanelId}
+                aria-label={
+                  stepsSetupOpen
+                    ? "Collapse Shortcuts setup instructions"
+                    : "Set up — Shortcuts URL and hosting notes"
+                }
+                onClick={() => setStepsSetupOpen((v) => !v)}
+                className="group flex w-full items-center justify-between gap-2 rounded-md px-0 py-0.5 text-left text-sm font-semibold text-align-forest transition hover:text-align-forest-muted"
+              >
+                <span>Set up</span>
+                <span
+                  className="text-2xl leading-none text-align-muted transition group-hover:text-align-forest sm:text-[1.75rem]"
                   aria-hidden
                 >
-                  <path
-                    fillRule="evenodd"
-                    d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </summary>
-              <div className="space-y-2 border-t border-emerald-200/70 px-3 pb-3 pt-2">
-                <p className="font-semibold text-zinc-900">Shortcuts setup (works for every user)</p>
-                <p>
-                  Copy <span className="font-medium">your</span> URL — it ties steps to this account only. Other
-                  people sign in, connect here, and put <span className="font-medium">their</span> URL in their
-                  own Shortcut.
-                </p>
-                <div className="rounded-lg border border-zinc-200/90 bg-zinc-50/90 px-3 py-2 text-zinc-700">
-                  <p className="font-medium text-zinc-800">Vercel / production host</p>
-                  <p className="mt-1 leading-relaxed">
-                    This link always starts with your app&apos;s{" "}
-                    <span className="font-medium text-zinc-900">public HTTPS address</span> (not your phone). In
-                    Vercel go to{" "}
-                    <span className="font-medium text-zinc-900">Project → Settings → Environment Variables</span>{" "}
-                    and set:
+                  {stepsSetupOpen ? "▾" : "▸"}
+                </span>
+              </button>
+              {stepsSetupOpen ? (
+                <div id={stepsSetupPanelId} className="mt-3 space-y-2">
+                  <p className="font-semibold text-zinc-900">Shortcuts setup (works for every user)</p>
+                  <p>
+                    Copy <span className="font-medium">your</span> URL — it ties steps to this account only. Other
+                    people sign in, connect here, and put <span className="font-medium">their</span> URL in their
+                    own Shortcut.
                   </p>
-                  <code className="mt-2 block rounded-md bg-white px-2 py-1.5 font-mono text-[11px] text-zinc-800 ring-1 ring-zinc-200/80">
-                    {`AUTH_URL=${
-                      stepsClientHints.browserOrigin &&
-                      stepsClientHints.browserOrigin.startsWith("https:")
-                        ? stepsClientHints.browserOrigin
-                        : "https://your-project.vercel.app"
-                    }`}
-                  </code>
-                  <p className="mt-1.5 text-[11px] text-zinc-600">
-                    Use your real deployment URL — <span className="font-medium">same as this site</span> when
-                    you open Settings here — with <span className="font-medium">no trailing slash</span>. Save,
-                    then <span className="font-medium">Redeploy</span>. If <code className="rounded bg-zinc-200/80 px-1">AUTH_URL</code> is
-                    empty, Vercel&apos;s <code className="rounded bg-zinc-200/80 px-1">VERCEL_URL</code> is used so the link still points at your deploy.
-                  </p>
-                </div>
-                {stepsClientHints.ingestOriginMismatch ? (
-                  <div
-                    className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950"
-                    role="status"
-                  >
-                    <p className="font-medium">This URL looks like localhost but you&apos;re on a live site</p>
-                    <p className="mt-1 text-amber-900/90">
-                      Set <code className="rounded bg-amber-100/80 px-1">AUTH_URL</code> to{" "}
-                      <span className="font-mono font-semibold">
-                        {stepsClientHints.browserOrigin ?? "this site’s origin"}
-                      </span>{" "}
-                      in Vercel, redeploy, then refresh this page and copy the URL again.
+                  <div className="rounded-lg border border-zinc-200/90 bg-zinc-50/90 px-3 py-2 text-zinc-700">
+                    <p className="font-medium text-zinc-800">Vercel / production host</p>
+                    <p className="mt-1 leading-relaxed">
+                      This link always starts with your app&apos;s{" "}
+                      <span className="font-medium text-zinc-900">public HTTPS address</span> (not your phone). In
+                      Vercel go to{" "}
+                      <span className="font-medium text-zinc-900">Project → Settings → Environment Variables</span>{" "}
+                      and set:
+                    </p>
+                    <code className="mt-2 block rounded-md bg-white px-2 py-1.5 font-mono text-[11px] text-zinc-800 ring-1 ring-zinc-200/80">
+                      {`AUTH_URL=${
+                        stepsClientHints.browserOrigin &&
+                        stepsClientHints.browserOrigin.startsWith("https:")
+                          ? stepsClientHints.browserOrigin
+                          : "https://your-project.vercel.app"
+                      }`}
+                    </code>
+                    <p className="mt-1.5 text-[11px] text-zinc-600">
+                      The <span className="font-medium">Copy URL</span> below uses your{" "}
+                      <span className="font-medium">configured app URL</span> (<code className="rounded bg-zinc-200/80 px-1">AUTH_URL</code>, or
+                      Vercel&apos;s <code className="rounded bg-zinc-200/80 px-1">VERCEL_URL</code> when unset)—not this browser tab. Set{" "}
+                      <code className="rounded bg-zinc-200/80 px-1">AUTH_URL</code> to your production HTTPS origin (no trailing slash), save,
+                      then redeploy so ingest and OAuth stay aligned.
                     </p>
                   </div>
-                ) : null}
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
-                  <code className="min-w-0 flex-1 break-all rounded-md bg-zinc-100 px-2 py-1.5 text-[11px] leading-snug text-zinc-800">
-                    {stepsIngest.ingestUrl}
-                  </code>
-                  <button
-                    type="button"
-                    className="shrink-0 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
-                    onClick={() => {
-                      void navigator.clipboard.writeText(stepsIngest.ingestUrl).then(() => {
-                        setCopyFlash(true);
-                        window.setTimeout(() => setCopyFlash(false), 2000);
-                      });
-                    }}
-                  >
-                    {copyFlash ? "Copied" : "Copy URL"}
-                  </button>
+                  {stepsClientHints.ingestOriginMismatch ? (
+                    <div
+                      className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950"
+                      role="status"
+                    >
+                      <p className="font-medium">This URL looks like localhost but you&apos;re on a live site</p>
+                      <p className="mt-1 text-amber-900/90">
+                        Set <code className="rounded bg-amber-100/80 px-1">AUTH_URL</code> to{" "}
+                        <span className="font-mono font-semibold">
+                          {stepsClientHints.browserOrigin ?? "this site’s origin"}
+                        </span>{" "}
+                        in Vercel, redeploy, then refresh this page and copy the URL again.
+                      </p>
+                    </div>
+                  ) : null}
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+                    <code className="min-w-0 flex-1 break-all rounded-md bg-zinc-100 px-2 py-1.5 text-[11px] leading-snug text-zinc-800">
+                      {stepsIngest.ingestUrl}
+                    </code>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(stepsIngest.ingestUrl).then(() => {
+                          setCopyFlash(true);
+                          window.setTimeout(() => setCopyFlash(false), 2000);
+                        });
+                      }}
+                    >
+                      {copyFlash ? "Copied" : "Copy URL"}
+                    </button>
+                  </div>
+                  <p className="text-zinc-600">
+                    In Shortcuts → <span className="font-medium">Get Contents of URL</span>: method{" "}
+                    <span className="font-medium">POST</span>. If you set env{" "}
+                    <code className="rounded bg-zinc-100 px-1">STEPS_INGEST_SECRET</code> on the server, add header{" "}
+                    <code className="rounded bg-zinc-100 px-1">X-Shortcut-Secret</code> (or{" "}
+                    <code className="rounded bg-zinc-100 px-1">Authorization: Bearer …</code>) to that same value. If{" "}
+                    <code className="rounded bg-zinc-100 px-1">STEPS_INGEST_SECRET</code> is not set, you do not need a
+                    secret header — your personal URL path identifies your account.
+                  </p>
+                  <p className="text-zinc-600">
+                    Body: JSON{" "}
+                    <code className="rounded bg-zinc-100 px-1">{"{ \"timestamp\": \"…ISO…\", \"steps\": 123 }"}</code>{" "}
+                    or <code className="rounded bg-zinc-100 px-1">{"{ \"samples\": […] }"}</code> (see API notes
+                    below).
+                  </p>
+                  {stepsIngest.notes.length > 0 ? (
+                    <ul className="list-inside list-disc space-y-0.5 text-zinc-600">
+                      {stepsIngest.notes.map((n) => (
+                        <li key={n}>{n}</li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
-                <p className="text-zinc-600">
-                  In Shortcuts → <span className="font-medium">Get Contents of URL</span>: method{" "}
-                  <span className="font-medium">POST</span>. If you set env{" "}
-                  <code className="rounded bg-zinc-100 px-1">STEPS_INGEST_SECRET</code> on the server, add header{" "}
-                  <code className="rounded bg-zinc-100 px-1">X-Shortcut-Secret</code> (or{" "}
-                  <code className="rounded bg-zinc-100 px-1">Authorization: Bearer …</code>) to that same value. If{" "}
-                  <code className="rounded bg-zinc-100 px-1">STEPS_INGEST_SECRET</code> is not set, you do not need a
-                  secret header — your personal URL path identifies your account.
-                </p>
-                <p className="text-zinc-600">
-                  Body: JSON{" "}
-                  <code className="rounded bg-zinc-100 px-1">{"{ \"timestamp\": \"…ISO…\", \"steps\": 123 }"}</code>{" "}
-                  or <code className="rounded bg-zinc-100 px-1">{"{ \"samples\": […] }"}</code> (see API notes
-                  below).
-                </p>
-                {stepsIngest.notes.length > 0 ? (
-                  <ul className="list-inside list-disc space-y-0.5 text-zinc-600">
-                    {stepsIngest.notes.map((n) => (
-                      <li key={n}>{n}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            </details>
+              ) : null}
+            </div>
           ) : null}
         </div>
       </div>

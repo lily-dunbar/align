@@ -5,6 +5,9 @@
  * Prefer `AUTH_URL` (set explicitly in production — especially when using a custom
  * domain so it matches Dexcom/Strava redirect URIs). On Vercel, falls back to
  * `VERCEL_URL` when `AUTH_URL` is unset so deploys work without extra config.
+ *
+ * The Shortcuts **Copy URL** uses this same base so ingest always matches your
+ * configured deployment (not the browser tab hostname).
  */
 export function getPublicAppBaseUrl(): string {
   const explicit = process.env.AUTH_URL?.trim();

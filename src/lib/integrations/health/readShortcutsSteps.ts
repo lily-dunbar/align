@@ -280,17 +280,34 @@ export type ReadShortcutsStepsResult =
   | { ok: true; steps: number; source: "shortcuts-file"; filePath: string; lineCount?: number }
   | { ok: false; error: string; filePath: string };
 
+function isVercelServerless(): boolean {
+  return process.env.VERCEL === "1";
+}
+
+const HOSTED_FILE_SYNC_HELP =
+  "This hosted server can’t read files on your Mac or in iCloud. Use Shortcuts to POST steps to your personal URL (Integrations → Apple Steps → Set up), not Sync—or run Align locally and set SHORTCUTS_STEPS_FILE_PATH in .env.local.";
+
 export async function readShortcutsFileText(): Promise<
   | { ok: true; text: string; filePath: string }
   | { ok: false; error: string; filePath: string }
 > {
   const fromShortcuts = process.env.SHORTCUTS_STEPS_FILE_PATH?.trim();
   const fromIcloudOrJson = process.env.ICLOUD_STEPS_JSON_PATH?.trim();
+  const onVercel = isVercelServerless();
+
+  if (onVercel && !fromShortcuts && !fromIcloudOrJson) {
+    return { ok: false, error: HOSTED_FILE_SYNC_HELP, filePath: "" };
+  }
+
   const candidates: string[] = [];
   if (fromShortcuts) candidates.push(expandHomePath(fromShortcuts));
   if (fromIcloudOrJson) candidates.push(expandHomePath(fromIcloudOrJson));
-  if (candidates.length === 0) {
+  if (!onVercel && candidates.length === 0) {
     candidates.push(...defaultShortcutsStepsAbsolutePaths());
+  }
+
+  if (candidates.length === 0) {
+    return { ok: false, error: HOSTED_FILE_SYNC_HELP, filePath: "" };
   }
 
   const tried: string[] = [];
@@ -307,9 +324,11 @@ export async function readShortcutsFileText(): Promise<
   }
 
   const hint =
-    fromShortcuts || fromIcloudOrJson
-      ? lastError
-      : `${lastError}. Tried:\n${tried.map((p) => `  • ${p}`).join("\n")}`;
+    onVercel
+      ? HOSTED_FILE_SYNC_HELP
+      : fromShortcuts || fromIcloudOrJson
+        ? lastError
+        : `${lastError}. Tried:\n${tried.map((p) => `  • ${p}`).join("\n")}`;
   return {
     ok: false,
     error: hint,

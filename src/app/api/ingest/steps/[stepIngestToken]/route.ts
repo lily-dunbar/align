@@ -203,17 +203,57 @@ export async function POST(
 ) {
   try {
     if (!isStepsIngestAuthorized(request)) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        {
+          error: "Unauthorized",
+          hint:
+            "If Vercel has STEPS_INGEST_SECRET set, Shortcuts must send header X-Shortcut-Secret (or Authorization: Bearer) with that exact value. If you are not using a secret, remove STEPS_INGEST_SECRET from env and redeploy.",
+        },
+        { status: 401 },
+      );
     }
 
     const { stepIngestToken } = await context.params;
     let userId = await getUserIdForStepIngestToken(stepIngestToken);
+
     if (!userId) {
-      // Backward compatibility for previously generated signed tokens.
-      userId = verifyStepIngestToken(stepIngestToken).userId;
+      if (stepIngestToken.startsWith("st_")) {
+        return NextResponse.json(
+          {
+            error: "Unknown ingest token",
+            hint:
+              "Copy the ingest URL again from Align → Settings → Integrations → Apple Steps → Set up (same Vercel deploy + database as this project).",
+          },
+          { status: 401 },
+        );
+      }
+      try {
+        userId = verifyStepIngestToken(stepIngestToken).userId;
+      } catch {
+        return NextResponse.json(
+          {
+            error: "Invalid ingest token",
+            hint:
+              "Use the full URL from Settings → Apple Steps → Set up (path …/api/ingest/steps/st_…).",
+          },
+          { status: 401 },
+        );
+      }
     }
 
-    const payload = await request.json();
+    let payload: unknown;
+    try {
+      payload = await request.json();
+    } catch {
+      return NextResponse.json(
+        {
+          error: "Request body is not valid JSON",
+          hint:
+            'In Shortcuts: Get Contents of URL → Method POST → Request Body: JSON, e.g. { "timestamp": "2026-05-05T12:00:00.000Z", "steps": 500 } (use Format Date → ISO 8601 for the timestamp).',
+        },
+        { status: 400 },
+      );
+    }
     const samples = parseSamples(payload);
 
     await db

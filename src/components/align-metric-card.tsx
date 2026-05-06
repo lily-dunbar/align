@@ -1,4 +1,6 @@
-type MetricVariant = "glucose" | "tir" | "steps";
+import type { ReactNode } from "react";
+
+type MetricVariant = "glucose" | "tir" | "steps" | "carbs";
 
 const shells: Record<MetricVariant, string> = {
   glucose:
@@ -6,12 +8,15 @@ const shells: Record<MetricVariant, string> = {
   tir: "border-white/60 bg-align-card-tir ring-1 ring-black/[0.04] dark:border-white/5 dark:ring-white/10",
   steps:
     "border-white/60 bg-align-card-steps ring-1 ring-black/[0.04] dark:border-white/5 dark:ring-white/10",
+  carbs:
+    "border-white/60 bg-amber-50/90 ring-1 ring-amber-200/60 dark:border-white/5 dark:ring-white/10",
 };
 
 const valueColors: Record<MetricVariant, string> = {
   glucose: "text-align-text-glucose",
   tir: "text-align-text-tir",
   steps: "text-align-text-steps",
+  carbs: "text-amber-900",
 };
 
 function MetricIcon({ variant }: { variant: MetricVariant }) {
@@ -36,6 +41,19 @@ function MetricIcon({ variant }: { variant: MetricVariant }) {
       </svg>
     );
   }
+  if (variant === "carbs") {
+    return (
+      <svg className={cls} viewBox="0 0 24 24" fill="none" aria-hidden>
+        <path
+          d="M6 18V12M10 18V8M14 18v-5M18 18v-9"
+          stroke="currentColor"
+          strokeWidth={1.35}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
   return (
     <svg className={cls} viewBox="0 0 24 24" fill="none" aria-hidden>
       <path
@@ -55,7 +73,7 @@ type Props = {
   value: string;
   /** Shown smaller beside the value (e.g. `mg/dL` on glucose cards). */
   valueUnit?: string;
-  subtitle?: string | null;
+  subtitle?: ReactNode;
 };
 
 export function AlignMetricCard({ variant, title, value, valueUnit, subtitle }: Props) {

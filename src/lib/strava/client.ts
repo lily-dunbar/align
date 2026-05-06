@@ -45,6 +45,11 @@ function stravaSyncLookbackDays(): number {
   return Math.min(365, Math.floor(n));
 }
 
+function clampStravaLookbackDays(days: number): number {
+  if (!Number.isFinite(days)) return DEFAULT_STRAVA_SYNC_LOOKBACK_DAYS;
+  return Math.min(365, Math.max(1, Math.floor(days)));
+}
+
 function asInt(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
     return Math.round(value);
@@ -248,7 +253,7 @@ async function fetchStravaActivities(
   return Array.isArray(payload) ? (payload as StravaActivity[]) : [];
 }
 
-export async function syncStravaActivities(userId: string) {
+export async function syncStravaActivities(userId: string, lookbackDaysOverride?: number) {
   const latest = await db.query.activities.findFirst({
     where: and(eq(activities.userId, userId), eq(activities.provider, "strava")),
     orderBy: [desc(activities.startAt)],
@@ -256,7 +261,10 @@ export async function syncStravaActivities(userId: string) {
   });
 
   const now = new Date();
-  const lookbackDays = stravaSyncLookbackDays();
+  const lookbackDays =
+    lookbackDaysOverride != null
+      ? clampStravaLookbackDays(lookbackDaysOverride)
+      : stravaSyncLookbackDays();
   const windowStart = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
   const afterEpoch = epochSec(windowStart);
   const beforeEpoch = epochSec(now);

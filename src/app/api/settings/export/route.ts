@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 import { db } from "@/db";
+import { ensureUserDisplayPrefsDexcomBackfillColumn } from "@/lib/db/ensure-user-display-prefs-dexcom-column";
 import {
   activities,
   dexcomTokens,
@@ -23,6 +24,8 @@ export async function GET() {
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  await ensureUserDisplayPrefsDexcomBackfillColumn();
 
   const [
     userRow,

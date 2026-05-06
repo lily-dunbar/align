@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useState } from "react";
+import { LightToast } from "@/components/light-toast";
 
 function readBrowserOrigin(): string {
   if (typeof window === "undefined") return "";
@@ -9,6 +10,14 @@ function readBrowserOrigin(): string {
 }
 
 const SETTINGS_RETURN = encodeURIComponent("/settings");
+const primaryButtonClass =
+  "inline-flex min-w-[6.75rem] items-center justify-center rounded-full bg-align-forest px-3 py-1.5 text-sm font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted disabled:cursor-not-allowed disabled:opacity-50";
+const secondaryButtonClass =
+  "inline-flex min-w-[6.75rem] items-center justify-center rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-800 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50";
+const secondaryIconButtonClass =
+  "inline-flex min-h-10 min-w-10 items-center justify-center rounded-full border border-zinc-200 bg-white px-2 py-1 text-sm leading-none text-zinc-800 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50";
+const syncButtonClass =
+  "inline-flex min-w-[5.5rem] items-center justify-center rounded-full bg-align-forest px-2.5 py-1 text-xs font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted disabled:cursor-not-allowed disabled:opacity-50";
 
 function formatWhen(iso: string | null) {
   if (!iso) return "—";
@@ -92,6 +101,8 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [openOverflow, setOpenOverflow] = useState<"dexcom" | "strava" | "steps" | null>(null);
   const [stepsIngest, setStepsIngest] = useState<StepsIngestInfo | null>(null);
   const [copyFlash, setCopyFlash] = useState(false);
   const [stepsIngestModalOpen, setStepsIngestModalOpen] = useState(false);
@@ -102,6 +113,11 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
     ingestOriginMismatch: boolean;
   }>({ browserOrigin: null, ingestOriginMismatch: false });
   const mostRecentIngest = initial.steps.recentRows[0] ?? null;
+
+  function showSuccessToast(message: string) {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 2200);
+  }
 
   useEffect(() => {
     const origin = readBrowserOrigin() || null;
@@ -181,7 +197,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
         const resp = await fetch("/api/integrations/dexcom/disconnect", { method: "DELETE" });
         const json = (await resp.json()) as { error?: string };
         if (!resp.ok) throw new Error(json.error ?? "Disconnect failed");
-        setNotice("Dexcom Share disconnected for this account.");
+        showSuccessToast("Dexcom Share disconnected.");
         router.refresh();
       } catch (e) {
         setNotice(e instanceof Error ? e.message : "Disconnect failed");
@@ -203,7 +219,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
       const resp = await fetch(path, { method: "DELETE" });
       const json = (await resp.json()) as { error?: string };
       if (!resp.ok) throw new Error(json.error ?? "Disconnect failed");
-      setNotice(`${kind === "steps" ? "Steps ingest" : kind} disconnected.`);
+      showSuccessToast(`${kind === "steps" ? "Steps ingest" : kind} disconnected.`);
       router.refresh();
     } catch (e) {
       setNotice(e instanceof Error ? e.message : "Disconnect failed");
@@ -219,7 +235,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
       const resp = await fetch("/api/integrations/dexcom/share-ui", { method: "DELETE" });
       const json = (await resp.json()) as { error?: string };
       if (!resp.ok) throw new Error(json.error ?? "Could not restore Dexcom Share");
-      setNotice("Dexcom Share is active again for this account.");
+      showSuccessToast("Dexcom Share is active again.");
       router.refresh();
     } catch (e) {
       setNotice(e instanceof Error ? e.message : "Could not restore Dexcom Share");
@@ -251,9 +267,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
         throw new Error(json.error ?? `Could not create ingest token (HTTP ${resp.status})`);
       }
       setStepsIngest({ ingestUrl: json.ingestUrl, notes: json.notes ?? [] });
-      setNotice(
-        "Your personal Shortcut URL is below — use POST from Apple Shortcuts to send step samples.",
-      );
+      showSuccessToast("Apple Steps connected.");
       router.refresh();
     } catch (e) {
       setNotice(e instanceof Error ? e.message : "Could not connect Steps");
@@ -262,14 +276,15 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
     }
   }
 
-  async function syncDexcom() {
-    setBusy("sync-dexcom");
+  async function syncDexcom(lookbackDays = 30) {
+    setBusy(`sync-dexcom-${lookbackDays}`);
     setNotice(null);
+    setOpenOverflow(null);
     try {
       const resp = await fetch("/api/integrations/dexcom/sync?format=json", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lookbackDays: 30 }),
+        body: JSON.stringify({ lookbackDays }),
       });
       const json = (await resp.json()) as {
         error?: string;
@@ -279,8 +294,8 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
         unchanged?: number;
       };
       if (!resp.ok) throw new Error(json.error ?? "Dexcom sync failed");
-      setNotice(
-        `Dexcom sync: fetched ${json.fetched ?? 0}, inserted ${json.inserted ?? 0}, updated ${json.updated ?? 0}, unchanged ${json.unchanged ?? 0}.`,
+      showSuccessToast(
+        `Dexcom sync done: +${json.inserted ?? 0} new, ${json.updated ?? 0} updated.`,
       );
       router.refresh();
     } catch (e) {
@@ -290,12 +305,15 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
     }
   }
 
-  async function syncStrava() {
-    setBusy("sync-strava");
+  async function syncStrava(lookbackDays = 30) {
+    setBusy(`sync-strava-${lookbackDays}`);
     setNotice(null);
+    setOpenOverflow(null);
     try {
       const resp = await fetch("/api/integrations/strava/sync?format=json", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lookbackDays }),
       });
       const json = (await resp.json()) as {
         error?: string;
@@ -306,8 +324,8 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
         lookbackDays?: number;
       };
       if (!resp.ok) throw new Error(json.error ?? "Strava sync failed");
-      setNotice(
-        `Strava sync (${json.lookbackDays ?? 30}d window): fetched ${json.fetched ?? 0}, inserted ${json.inserted ?? 0}, updated ${json.updated ?? 0}, unchanged ${json.unchanged ?? 0}.`,
+      showSuccessToast(
+        `Strava sync done: +${json.inserted ?? 0} new, ${json.updated ?? 0} updated.`,
       );
       router.refresh();
     } catch (e) {
@@ -319,7 +337,9 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
 
   return (
     <section className="w-full rounded-2xl border border-align-border/90 bg-white/90 p-5 ring-1 ring-black/[0.03]">
-      <h2 className="text-lg font-semibold tracking-tight">Integrations</h2>
+      <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
+        Integrations
+      </h2>
 
       {notice ? (
         <p
@@ -360,13 +380,13 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 )}
               </p>
             </div>
-            <div className="flex shrink-0 flex-wrap justify-end gap-2">
+            <div className="relative flex shrink-0 flex-wrap justify-end gap-2">
               {!initial.dexcom.connected ? (
                 <>
                   {initial.dexcom.shareCredentialsMode && initial.dexcom.shareUiDismissed ? (
                     <button
                       type="button"
-                      className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
+                      className={secondaryButtonClass}
                       disabled={busy !== null}
                       onClick={() => void showDexcomShareAgain()}
                     >
@@ -374,7 +394,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                     </button>
                   ) : null}
                   <a
-                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50"
+                    className={primaryButtonClass}
                     href={`/api/integrations/dexcom/connect?return_to=${SETTINGS_RETURN}`}
                   >
                     Connect
@@ -384,47 +404,80 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 <>
                   <button
                     type="button"
-                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
+                    className={syncButtonClass}
                     disabled={busy !== null}
                     onClick={() => void syncDexcom()}
                   >
-                    {busy === "sync-dexcom" ? "Syncing…" : "Sync"}
+                    {busy?.startsWith("sync-dexcom") ? "Syncing…" : "Sync"}
                   </button>
                   <button
                     type="button"
-                    className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                    aria-haspopup="menu"
+                    aria-expanded={openOverflow === "dexcom"}
+                    className={secondaryIconButtonClass}
                     disabled={busy !== null}
-                    onClick={() => void disconnect("dexcom")}
+                    onClick={() =>
+                      setOpenOverflow((v) => (v === "dexcom" ? null : "dexcom"))
+                    }
                   >
-                    {busy === "disconnect-dexcom" ? "Disconnecting…" : "Disconnect"}
+                    …
                   </button>
                 </>
               ) : (
                 <>
                   <a
-                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50"
+                    className={primaryButtonClass}
                     href={`/api/integrations/dexcom/connect?return_to=${SETTINGS_RETURN}`}
                   >
                     Connect
                   </a>
                   <button
                     type="button"
-                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
+                    className={syncButtonClass}
                     disabled={busy !== null}
                     onClick={() => void syncDexcom()}
                   >
-                    {busy === "sync-dexcom" ? "Syncing…" : "Sync"}
+                    {busy?.startsWith("sync-dexcom") ? "Syncing…" : "Sync"}
                   </button>
                   <button
                     type="button"
-                    className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                    aria-haspopup="menu"
+                    aria-expanded={openOverflow === "dexcom"}
+                    className={secondaryIconButtonClass}
                     disabled={busy !== null}
-                    onClick={() => void disconnect("dexcom")}
+                    onClick={() =>
+                      setOpenOverflow((v) => (v === "dexcom" ? null : "dexcom"))
+                    }
                   >
-                    Disconnect
+                    …
                   </button>
                 </>
               )}
+              {openOverflow === "dexcom" ? (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border border-zinc-200 bg-white p-1.5 shadow-lg"
+                >
+                  <button
+                    type="button"
+                    className="min-h-10 w-full rounded-full px-2 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                    onClick={() => void syncDexcom(90)}
+                  >
+                    Sync last 90 days
+                  </button>
+                  <button
+                    type="button"
+                    className="mt-1 min-h-10 w-full rounded-full px-2 py-1.5 text-left text-sm text-red-700 hover:bg-red-50"
+                    disabled={busy !== null}
+                    onClick={() => {
+                      setOpenOverflow(null);
+                      void disconnect("dexcom");
+                    }}
+                  >
+                    {busy === "disconnect-dexcom" ? "Disconnecting…" : "Disconnect"}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -445,10 +498,10 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 )}
               </p>
             </div>
-            <div className="flex shrink-0 flex-wrap justify-end gap-2">
+            <div className="relative flex shrink-0 flex-wrap justify-end gap-2">
               {!initial.strava.connected ? (
                 <a
-                  className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50"
+                  className={primaryButtonClass}
                   href={`/api/integrations/strava/connect?return_to=${SETTINGS_RETURN}`}
                 >
                   Connect
@@ -457,29 +510,58 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 <>
                   <button
                     type="button"
-                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
+                    className={syncButtonClass}
                     disabled={busy !== null}
                     onClick={() => void syncStrava()}
                   >
-                    {busy === "sync-strava" ? "Syncing…" : "Sync"}
+                    {busy?.startsWith("sync-strava") ? "Syncing…" : "Sync"}
                   </button>
                   <button
                     type="button"
-                    className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                    aria-haspopup="menu"
+                    aria-expanded={openOverflow === "strava"}
+                    className={secondaryIconButtonClass}
                     disabled={busy !== null}
-                    onClick={() => void disconnect("strava")}
+                    onClick={() =>
+                      setOpenOverflow((v) => (v === "strava" ? null : "strava"))
+                    }
                   >
-                    Disconnect
+                    …
                   </button>
                 </>
               )}
+              {openOverflow === "strava" ? (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border border-zinc-200 bg-white p-1.5 shadow-lg"
+                >
+                  <button
+                    type="button"
+                    className="min-h-10 w-full rounded-full px-2 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                    onClick={() => void syncStrava(90)}
+                  >
+                    Sync last 90 days
+                  </button>
+                  <button
+                    type="button"
+                    className="mt-1 min-h-10 w-full rounded-full px-2 py-1.5 text-left text-sm text-red-700 hover:bg-red-50"
+                    disabled={busy !== null}
+                    onClick={() => {
+                      setOpenOverflow(null);
+                      void disconnect("strava");
+                    }}
+                  >
+                    {busy === "disconnect-strava" ? "Disconnecting…" : "Disconnect"}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
 
         {/* Apple Steps */}
         <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="font-medium text-zinc-900">Apple Steps</p>
               <p className="mt-1 text-xs text-zinc-500">
@@ -512,11 +594,11 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 )}
               </p>
             </div>
-            <div className="flex shrink-0 flex-wrap justify-end gap-2">
+            <div className="relative flex shrink-0 items-start justify-end gap-2">
               {!initial.steps.connected ? (
                 <button
                   type="button"
-                  className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
+                  className={primaryButtonClass}
                   disabled={busy !== null}
                   onClick={() => void connectSteps()}
                 >
@@ -526,23 +608,44 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 <>
                   <button
                     type="button"
-                    title="Show latest ingested rows"
-                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
+                    aria-haspopup="menu"
+                    aria-expanded={openOverflow === "steps"}
+                    className={secondaryIconButtonClass}
                     disabled={busy !== null}
-                    onClick={() => setStepsIngestModalOpen(true)}
+                    onClick={() => setOpenOverflow((v) => (v === "steps" ? null : "steps"))}
+                  >
+                    …
+                  </button>
+                </>
+              )}
+              {openOverflow === "steps" ? (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border border-zinc-200 bg-white p-1.5 shadow-lg"
+                >
+                  <button
+                    type="button"
+                    className="min-h-10 w-full rounded-full px-2 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                    onClick={() => {
+                      setOpenOverflow(null);
+                      setStepsIngestModalOpen(true);
+                    }}
                   >
                     View latest ingest
                   </button>
                   <button
                     type="button"
-                    className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                    className="mt-1 min-h-10 w-full rounded-full px-2 py-1.5 text-left text-sm text-red-700 hover:bg-red-50"
                     disabled={busy !== null}
-                    onClick={() => void disconnect("steps")}
+                    onClick={() => {
+                      setOpenOverflow(null);
+                      void disconnect("steps");
+                    }}
                   >
-                    Disconnect
+                    {busy === "disconnect-steps" ? "Disconnecting…" : "Disconnect"}
                   </button>
-                </>
-              )}
+                </div>
+              ) : null}
             </div>
           </div>
           {initial.steps.connected && stepsIngest ? (
@@ -551,24 +654,21 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 type="button"
                 aria-expanded={stepsSetupOpen}
                 aria-controls={stepsSetupPanelId}
-                aria-label={
-                  stepsSetupOpen
-                    ? "Collapse Shortcuts setup instructions"
-                    : "Set up — Shortcuts URL and hosting notes"
-                }
+                aria-label={stepsSetupOpen ? "Collapse setup details" : "Learn more about Apple Steps setup"}
+                className="group inline-flex min-h-10 items-center gap-1 rounded-full px-1.5 py-1 text-left text-sm font-semibold text-align-forest transition hover:text-align-forest-muted disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={busy !== null}
                 onClick={() => setStepsSetupOpen((v) => !v)}
-                className="group flex w-full items-center justify-between gap-2 rounded-md px-0 py-0.5 text-left text-sm font-semibold text-align-forest transition hover:text-align-forest-muted"
               >
-                <span>Set up</span>
+                <span>{stepsSetupOpen ? "Hide details" : "Learn more"}</span>
                 <span
-                  className="text-2xl leading-none text-align-muted transition group-hover:text-align-forest sm:text-[1.75rem]"
+                  className="text-base leading-none text-align-muted transition group-hover:text-align-forest"
                   aria-hidden
                 >
                   {stepsSetupOpen ? "▾" : "▸"}
                 </span>
               </button>
               {stepsSetupOpen ? (
-                <div id={stepsSetupPanelId} className="mt-3 space-y-2">
+                <div id={stepsSetupPanelId} className="mt-2 space-y-2">
                   <p className="font-semibold text-zinc-900">Shortcuts setup (works for every user)</p>
                   <p>
                     Copy <span className="font-medium">your</span> URL — it ties steps to this account only. Other
@@ -621,7 +721,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                     </code>
                     <button
                       type="button"
-                      className="shrink-0 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
+                      className={secondaryButtonClass}
                       disabled={busy !== null}
                       title="Fetches the latest URL from the server, then copies it"
                       onClick={() => {
@@ -678,6 +778,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
           ) : null}
         </div>
       </div>
+      {toast ? <LightToast message={toast} /> : null}
       {stepsIngestModalOpen ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
@@ -694,7 +795,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
               <h3 className="text-sm font-semibold text-zinc-900">Latest ingest rows</h3>
               <button
                 type="button"
-                className="rounded-md border border-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
+                className="rounded-full border border-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
                 onClick={() => setStepsIngestModalOpen(false)}
               >
                 Close

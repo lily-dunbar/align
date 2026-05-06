@@ -5,7 +5,6 @@ import { Geist, Geist_Mono, Lora } from "next/font/google";
 
 import { AppBottomNav } from "@/components/app-bottom-nav";
 import { AppHeader } from "@/components/app-header";
-import { isDemoModeEnabled } from "@/lib/demo-markers";
 import { getDeveloperDemoModeForUser } from "@/lib/user-display-preferences";
 import "./globals.css";
 
@@ -40,7 +39,7 @@ export default async function RootLayout({
 }>) {
   const { userId } = await auth();
   const userDemo = userId ? await getDeveloperDemoModeForUser(userId) : false;
-  const devModeBanner = isDemoModeEnabled() || userDemo;
+  const devModeBanner = userDemo;
 
   return (
     <html

@@ -21,7 +21,7 @@ function navActive(href: string, pathname: string) {
 
 function buildInsightsHref() {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  let w: PatternWindow = "7d";
+  let w: PatternWindow = "30d";
   try {
     const s = parseStoredPatternWindow(sessionStorage.getItem(PATTERNS_WINDOW_STORAGE_KEY));
     if (s) w = s;
@@ -46,7 +46,7 @@ export function AppBottomNav() {
   void insightsBump;
 
   const insightsHref =
-    typeof window === "undefined" ? "/patterns?window=7d" : buildInsightsHref();
+    typeof window === "undefined" ? "/patterns?window=30d" : buildInsightsHref();
 
   if (
     pathname.startsWith("/sign-in") ||
@@ -63,7 +63,7 @@ export function AppBottomNav() {
       label: "Daily",
       linkKey: "daily",
       icon: (
-        <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.35}>
+        <svg className="h-[19px] w-[19px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.35}>
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -77,7 +77,7 @@ export function AppBottomNav() {
       label: "Insights",
       linkKey: "insights",
       icon: (
-        <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.35}>
+        <svg className="h-[19px] w-[19px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.35}>
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -91,7 +91,7 @@ export function AppBottomNav() {
       label: "Settings",
       linkKey: "settings",
       icon: (
-        <svg className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.35}>
+        <svg className="h-[19px] w-[19px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.35}>
           <path
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -106,7 +106,7 @@ export function AppBottomNav() {
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-5 pb-[calc(0.45rem+env(safe-area-inset-bottom,0px))]">
       <nav
-        className="pointer-events-auto w-full max-w-2xl rounded-full border border-align-border/90 bg-white/90 py-1 pl-1.5 pr-1.5 shadow-[0_8px_32px_-10px_rgba(27,77,67,0.16)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/85"
+        className="pointer-events-auto w-full max-w-2xl rounded-full border border-align-border/90 bg-white/90 py-1.5 pl-2 pr-2 shadow-[0_8px_32px_-10px_rgba(27,77,67,0.16)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/85"
         aria-label="Main navigation"
       >
         <div className="grid grid-cols-3 gap-1">
@@ -117,7 +117,7 @@ export function AppBottomNav() {
                 key={linkKey}
                 href={href}
                 suppressHydrationWarning={linkKey === "insights"}
-                className={`flex flex-col items-center justify-center gap-0.5 rounded-full px-1 py-1.5 text-[10px] font-medium leading-none tracking-tight transition-colors duration-200 ${
+                className={`flex flex-col items-center justify-center gap-1 rounded-full px-1 py-2 text-[11px] font-medium leading-none tracking-tight transition-colors duration-200 ${
                   active
                     ? "bg-align-nav-active text-align-forest shadow-[0_1px_2px_rgba(27,77,67,0.1)]"
                     : "text-zinc-500 hover:text-zinc-800"

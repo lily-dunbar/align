@@ -14,7 +14,7 @@ export function isPatternWindow(value: string | undefined): value is PatternWind
 export function parsePatternWindow(param: string | undefined): PatternWindow {
   const p = param?.trim().toLowerCase();
   if (p === "7d" || p === "30d" || p === "90d") return p;
-  return "7d";
+  return "30d";
 }
 
 export function windowLabelDays(window: PatternWindow): number {

@@ -1,12 +1,32 @@
 "use client";
 
 import { startTransition, useEffect, useMemo, useState } from "react";
+import { formatInTimeZone } from "date-fns-tz";
 
 import { Skeleton } from "@/components/skeleton";
+import { LightToast } from "@/components/light-toast";
+import { useEffectiveTimeZone } from "@/hooks/use-effective-timezone";
 import type { SleepRecurrenceFreq } from "@/lib/manual/sleep-recurrence";
-import { parseSleepRecurrenceMeta } from "@/lib/manual/sleep-recurrence";
+import { buildSleepRecurrenceNotes, parseSleepRecurrenceMeta } from "@/lib/manual/sleep-recurrence";
 import { METERS_PER_MILE } from "@/lib/distance-units";
-import { DAY_DATA_CHANGED_EVENT, OPEN_MANUAL_MODAL_EVENT } from "@/lib/day-view-events";
+import {
+  DAY_DATA_CHANGED_EVENT,
+  OPEN_MANUAL_MODAL_EVENT,
+  type OpenManualModalDetail,
+} from "@/lib/day-view-events";
+import { inferMealPeriodFromLocalTime } from "@/lib/infer-meal-period";
+import {
+  isYmdSameDayInZone,
+  utcIsoToZonedDateInput,
+  utcIsoToZonedTimeInput,
+  zonedDateTimeToUtcIso,
+} from "@/lib/zoned-datetime-inputs";
+import {
+  foodTypeTagLabel,
+  parseFoodTypeTag,
+  toFoodTypeNote,
+  type FoodTypeTag,
+} from "@/lib/food-type-tag";
 import { useResolvedDayYmd } from "@/lib/use-resolved-day-ymd";
 
 type Workout = {
@@ -26,6 +46,7 @@ type FoodEntry = {
   title: string;
   eatenAt: string;
   carbsGrams: number | null;
+  notes: string | null;
 };
 
 type SleepRow = {
@@ -47,13 +68,28 @@ const WORKOUT_TYPES: { key: string; emoji: string; label: string }[] = [
   { key: "Run", emoji: "🏃", label: "Run" },
   { key: "Bike", emoji: "🚴", label: "Bike" },
   { key: "Swim", emoji: "🏊", label: "Swim" },
+  { key: "Misc cardio", emoji: "❤️", label: "Misc cardio" },
+  { key: "Strength training", emoji: "🏋️", label: "Strength" },
+  { key: "Yoga", emoji: "🧘", label: "Yoga" },
 ];
 
-const FOOD_PRESETS: { emoji: string; title: string; hint: string; carbsHint?: string }[] = [
-  { emoji: "🍃", title: "Low impact", hint: "30m", carbsHint: "20" },
-  { emoji: "⚡", title: "Fast acting", hint: "1h", carbsHint: "20" },
-  { emoji: "🕒", title: "Med acting", hint: "2h", carbsHint: "40" },
-  { emoji: "🐌", title: "Slow acting", hint: "3h", carbsHint: "60" },
+const FOOD_PRESETS: {
+  emoji: string;
+  typeTag: FoodTypeTag;
+  title: string;
+  hint: string;
+  carbsHint?: string;
+}[] = [
+  { emoji: "🥗", typeTag: "low_impact", title: "Low impact", hint: "30m", carbsHint: "20" },
+  {
+    emoji: "🧃",
+    typeTag: "fast_acting",
+    title: "Fast acting",
+    hint: "1h",
+    carbsHint: "20",
+  },
+  { emoji: "🍽️", typeTag: "medium_acting", title: "Med acting", hint: "2h", carbsHint: "40" },
+  { emoji: "🌯", typeTag: "slow_acting", title: "Slow acting", hint: "3h", carbsHint: "60" },
 ];
 
 function toIsoFromDateTime(date: string, time: string) {
@@ -149,14 +185,17 @@ function inputClass(short?: boolean) {
 
 export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
   const resolvedDateYmd = useResolvedDayYmd(dateYmd);
+  const effectiveTz = useEffectiveTimeZone();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [foods, setFoods] = useState<FoodEntry[]>([]);
   const [sleeps, setSleeps] = useState<SleepRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [isOpen, setIsOpen] = useState(false);
   const [tab, setTab] = useState<"sleep" | "activity" | "food">("activity");
+  const [focusedEdit, setFocusedEdit] = useState<OpenManualModalDetail["edit"] | null>(null);
 
   const [sleepForm, setSleepForm] = useState({
     bedDate: prevYmd(dateYmd),
@@ -182,11 +221,18 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
     time: "12:00",
     title: "Meal",
     carbsGrams: "",
+    foodTypeTag: null as FoodTypeTag | null,
   });
 
   const [editingWorkoutId, setEditingWorkoutId] = useState<string | null>(null);
   const [editingFoodId, setEditingFoodId] = useState<string | null>(null);
   const [editingSleepId, setEditingSleepId] = useState<string | null>(null);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
+
+  function showSuccessToast(message: string) {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 1800);
+  }
 
   const computedPace = useMemo(() => {
     const miles = parseFloat(workoutForm.distanceMiles);
@@ -268,8 +314,18 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
   }, []);
 
   useEffect(() => {
-    function handleOpen() {
-      setTab("activity");
+    function handleOpen(event: Event) {
+      const detail = (event as CustomEvent<OpenManualModalDetail>).detail;
+      const nextFromEdit =
+        detail?.edit?.kind === "sleep"
+          ? "sleep"
+          : detail?.edit?.kind === "food"
+            ? "food"
+            : detail?.edit?.kind === "activity"
+              ? "activity"
+              : undefined;
+      const next = detail?.tab ?? nextFromEdit;
+      setTab(next === "sleep" || next === "activity" || next === "food" ? next : "activity");
       setWorkoutForm((s) => ({ ...s, date: resolvedDateYmd }));
       setFoodForm((s) => ({ ...s, date: resolvedDateYmd }));
       setSleepForm({
@@ -280,6 +336,15 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
         recurring: false,
         recurrenceFreq: "weekly",
       });
+      setEditingWorkoutId(null);
+      setEditingFoodId(null);
+      setEditingSleepId(null);
+      setFocusedEdit(detail?.edit ?? null);
+      if (detail?.edit?.id) {
+        if (detail.edit.kind === "activity") setEditingWorkoutId(detail.edit.id);
+        if (detail.edit.kind === "food") setEditingFoodId(detail.edit.id);
+        if (detail.edit.kind === "sleep") setEditingSleepId(detail.edit.id);
+      }
       setIsOpen(true);
     }
     window.addEventListener(OPEN_MANUAL_MODAL_EVENT, handleOpen);
@@ -294,9 +359,14 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
   );
 
   const foodForDate = useMemo(
-    () => foods.filter((f) => isSameLocalDay(f.eatenAt, resolvedDateYmd)),
-    [foods, resolvedDateYmd],
+    () => foods.filter((f) => isYmdSameDayInZone(f.eatenAt, resolvedDateYmd, effectiveTz)),
+    [foods, resolvedDateYmd, effectiveTz],
   );
+
+  const foodFormMealPreview = useMemo(() => {
+    const iso = zonedDateTimeToUtcIso(foodForm.date, foodForm.time, effectiveTz);
+    return inferMealPeriodFromLocalTime(iso, effectiveTz).label;
+  }, [foodForm.date, foodForm.time, effectiveTz]);
 
   const sleepForDate = useMemo(
     () =>
@@ -311,69 +381,125 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
   const dayEntryCount =
     sleepForDate.length + workoutsForDate.length + foodForDate.length;
 
-  function openModal() {
-    setTab("activity");
-    setWorkoutForm((s) => ({ ...s, date: resolvedDateYmd }));
-    setFoodForm((s) => ({ ...s, date: resolvedDateYmd }));
-    setSleepForm({
-      bedDate: prevYmd(resolvedDateYmd),
-      bedTime: "22:00",
-      wakeDate: resolvedDateYmd,
-      wakeTime: "07:00",
-      recurring: false,
-      recurrenceFreq: "weekly",
+  const isFocusedEdit = focusedEdit != null;
+  const isActionBusy = actionBusy !== null;
+
+  useEffect(() => {
+    if (!isOpen || !focusedEdit?.id) return;
+    let cancelled = false;
+
+    queueMicrotask(() => {
+      if (cancelled) return;
+
+      if (focusedEdit.kind === "activity") {
+        const w = workouts.find((row) => row.id === focusedEdit.id);
+        if (!w) return;
+        setTab("activity");
+        setWorkoutForm({
+          workoutType: w.workoutType,
+          date: toLocalDateInput(w.startedAt),
+          startTime: toLocalTimeInput(w.startedAt),
+          endTime: w.endedAt ? toLocalTimeInput(w.endedAt) : "",
+          distanceMiles: metersToMiles(w.distanceMeters),
+          pace: w.pace ?? "",
+          notes: w.notes ?? "",
+        });
+      }
+
+      if (focusedEdit.kind === "food") {
+        const f = foods.find((row) => row.id === focusedEdit.id);
+        if (!f) return;
+        setTab("food");
+        setFoodForm({
+          date: utcIsoToZonedDateInput(f.eatenAt, effectiveTz),
+          time: utcIsoToZonedTimeInput(f.eatenAt, effectiveTz),
+          title: f.title,
+          carbsGrams: f.carbsGrams != null ? String(f.carbsGrams) : "",
+          foodTypeTag: parseFoodTypeTag(f.notes),
+        });
+      }
+
+      if (focusedEdit.kind === "sleep") {
+        const s = sleeps.find((row) => row.id === focusedEdit.id);
+        if (!s) return;
+        const recur = parseSleepRecurrenceMeta(s.notes);
+        setTab("sleep");
+        setSleepForm({
+          bedDate: toLocalDateInput(s.sleepStart),
+          bedTime: toLocalTimeInput(s.sleepStart),
+          wakeDate: toLocalDateInput(s.sleepEnd),
+          wakeTime: toLocalTimeInput(s.sleepEnd),
+          recurring: recur != null,
+          recurrenceFreq: recur?.freq ?? "weekly",
+        });
+      }
     });
-    setIsOpen(true);
-  }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, focusedEdit, workouts, foods, sleeps, effectiveTz]);
 
   async function createSleep() {
     setError(null);
-    const resp = await fetch("/api/manual/sleep", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sleepStart: toIsoFromDateTime(sleepForm.bedDate, sleepForm.bedTime),
-        sleepEnd: toIsoFromDateTime(sleepForm.wakeDate, sleepForm.wakeTime),
-        recurrence: sleepForm.recurring
-          ? { enabled: true, freq: sleepForm.recurrenceFreq }
-          : { enabled: false },
-      }),
-    });
-    const json = (await resp.json()) as { item?: SleepRow; error?: string };
-    if (!resp.ok || !json.item) {
-      setError(json.error ?? "Failed to save sleep");
-      return;
+    setActionBusy("create-sleep");
+    try {
+      const resp = await fetch("/api/manual/sleep", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sleepStart: toIsoFromDateTime(sleepForm.bedDate, sleepForm.bedTime),
+          sleepEnd: toIsoFromDateTime(sleepForm.wakeDate, sleepForm.wakeTime),
+          recurrence: sleepForm.recurring
+            ? { enabled: true, freq: sleepForm.recurrenceFreq }
+            : { enabled: false },
+        }),
+      });
+      const json = (await resp.json()) as { item?: SleepRow; error?: string };
+      if (!resp.ok || !json.item) {
+        setError(json.error ?? "Failed to save sleep");
+        return;
+      }
+      setSleepForm({
+        bedDate: prevYmd(resolvedDateYmd),
+        bedTime: "22:00",
+        wakeDate: resolvedDateYmd,
+        wakeTime: "07:00",
+        recurring: false,
+        recurrenceFreq: "weekly",
+      });
+      await loadAll();
+      notifyDayDataChanged();
+      showSuccessToast("Sleep saved");
+    } finally {
+      setActionBusy(null);
     }
-    setSleepForm({
-      bedDate: prevYmd(resolvedDateYmd),
-      bedTime: "22:00",
-      wakeDate: resolvedDateYmd,
-      wakeTime: "07:00",
-      recurring: false,
-      recurrenceFreq: "weekly",
-    });
-    await loadAll();
-    notifyDayDataChanged();
   }
 
   async function saveSleep(item: SleepRow) {
-    const resp = await fetch(`/api/manual/sleep/${item.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sleepStart: item.sleepStart,
-        sleepEnd: item.sleepEnd,
-        notes: item.notes,
-      }),
-    });
-    const json = (await resp.json()) as { error?: string };
-    if (!resp.ok) {
-      setError(json.error ?? "Failed to update sleep");
-      return;
+    setActionBusy("save-sleep");
+    try {
+      const resp = await fetch(`/api/manual/sleep/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sleepStart: item.sleepStart,
+          sleepEnd: item.sleepEnd,
+          notes: item.notes,
+        }),
+      });
+      const json = (await resp.json()) as { error?: string };
+      if (!resp.ok) {
+        setError(json.error ?? "Failed to update sleep");
+        return;
+      }
+      setEditingSleepId(null);
+      await loadAll();
+      notifyDayDataChanged();
+      showSuccessToast("Sleep updated");
+    } finally {
+      setActionBusy(null);
     }
-    setEditingSleepId(null);
-    await loadAll();
-    notifyDayDataChanged();
   }
 
   async function deleteSleep(item: SleepRow) {
@@ -391,145 +517,209 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
         url += "?scope=future";
       }
     }
-    await fetch(url, { method: "DELETE" });
-    await loadAll();
-    notifyDayDataChanged();
+    setActionBusy("delete-sleep");
+    try {
+      await fetch(url, { method: "DELETE" });
+      await loadAll();
+      notifyDayDataChanged();
+      showSuccessToast("Sleep deleted");
+    } finally {
+      setActionBusy(null);
+    }
   }
 
   async function createWorkout() {
     setError(null);
-    const miles = workoutForm.distanceMiles ? Number(workoutForm.distanceMiles) : null;
-    const paceSubmit =
-      workoutForm.pace.trim() || (computedPace && computedPace !== "" ? computedPace : null);
-    const resp = await fetch("/api/manual/workouts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        workoutType: workoutForm.workoutType,
-        startedAt: toIsoFromDateTime(workoutForm.date, workoutForm.startTime),
-        endedAt: workoutForm.endTime
-          ? toIsoFromDateTime(workoutForm.date, workoutForm.endTime)
-          : null,
-        distanceMeters:
-          miles != null && Number.isFinite(miles) && miles > 0
-            ? Math.round(miles * METERS_PER_MILE)
+    setActionBusy("create-activity");
+    try {
+      const miles = workoutForm.distanceMiles ? Number(workoutForm.distanceMiles) : null;
+      const paceSubmit =
+        workoutForm.pace.trim() || (computedPace && computedPace !== "" ? computedPace : null);
+      const resp = await fetch("/api/manual/workouts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutType: workoutForm.workoutType,
+          startedAt: toIsoFromDateTime(workoutForm.date, workoutForm.startTime),
+          endedAt: workoutForm.endTime
+            ? toIsoFromDateTime(workoutForm.date, workoutForm.endTime)
             : null,
-        pace: paceSubmit,
-        notes: workoutForm.notes || null,
-      }),
-    });
-    const json = (await resp.json()) as { item?: Workout; error?: string };
-    if (!resp.ok || !json.item) {
-      setError(json.error ?? "Failed to create workout");
-      return;
+          distanceMeters:
+            miles != null && Number.isFinite(miles) && miles > 0
+              ? Math.round(miles * METERS_PER_MILE)
+              : null,
+          pace: paceSubmit,
+          notes: workoutForm.notes || null,
+        }),
+      });
+      const json = (await resp.json()) as { item?: Workout; error?: string };
+      if (!resp.ok || !json.item) {
+        setError(json.error ?? "Failed to create workout");
+        return;
+      }
+      setWorkoutForm({
+        workoutType: "Walk",
+        date: resolvedDateYmd,
+        startTime: "08:00",
+        endTime: "08:45",
+        distanceMiles: "",
+        pace: "",
+        notes: "",
+      });
+      await loadAll();
+      notifyDayDataChanged();
+      showSuccessToast("Activity saved");
+    } finally {
+      setActionBusy(null);
     }
-    setWorkoutForm({
-      workoutType: "Walk",
-      date: resolvedDateYmd,
-      startTime: "08:00",
-      endTime: "08:45",
-      distanceMiles: "",
-      pace: "",
-      notes: "",
-    });
-    await loadAll();
-    notifyDayDataChanged();
   }
 
   async function createFood() {
     setError(null);
-    const resp = await fetch("/api/manual/food", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: foodForm.title.trim() || "Meal",
-        eatenAt: toIsoFromDateTime(foodForm.date, foodForm.time),
-        carbsGrams: foodForm.carbsGrams ? Number(foodForm.carbsGrams) : null,
-      }),
-    });
-    const json = (await resp.json()) as { item?: FoodEntry; error?: string };
-    if (!resp.ok || !json.item) {
-      setError(json.error ?? "Failed to create food entry");
-      return;
+    setActionBusy("create-food");
+    try {
+      const resp = await fetch("/api/manual/food", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: foodForm.title.trim() || "Meal",
+          eatenAt: zonedDateTimeToUtcIso(foodForm.date, foodForm.time, effectiveTz),
+          carbsGrams: foodForm.carbsGrams ? Number(foodForm.carbsGrams) : null,
+          notes: toFoodTypeNote(foodForm.foodTypeTag),
+        }),
+      });
+      const json = (await resp.json()) as { item?: FoodEntry; error?: string };
+      if (!resp.ok || !json.item) {
+        setError(json.error ?? "Failed to create food entry");
+        return;
+      }
+      setFoodForm({
+        date: resolvedDateYmd,
+        time: "12:00",
+        title: "Meal",
+        carbsGrams: "",
+        foodTypeTag: null,
+      });
+      await loadAll();
+      notifyDayDataChanged();
+      showSuccessToast("Food saved");
+    } finally {
+      setActionBusy(null);
     }
-    setFoodForm({
-      date: resolvedDateYmd,
-      time: "12:00",
-      title: "Meal",
-      carbsGrams: "",
-    });
-    await loadAll();
-    notifyDayDataChanged();
   }
 
   async function saveWorkout(item: Workout) {
-    const resp = await fetch(`/api/manual/workouts/${item.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        workoutType: item.workoutType,
-        startedAt: item.startedAt,
-        endedAt: item.endedAt,
-        distanceMeters: item.distanceMeters,
-        pace: item.pace,
-        notes: item.notes,
-      }),
-    });
-    const json = (await resp.json()) as { error?: string };
-    if (!resp.ok) {
-      setError(json.error ?? "Failed to update workout");
-      return;
+    setActionBusy("save-activity");
+    try {
+      const resp = await fetch(`/api/manual/workouts/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workoutType: item.workoutType,
+          startedAt: item.startedAt,
+          endedAt: item.endedAt,
+          distanceMeters: item.distanceMeters,
+          pace: item.pace,
+          notes: item.notes,
+        }),
+      });
+      const json = (await resp.json()) as { error?: string };
+      if (!resp.ok) {
+        setError(json.error ?? "Failed to update workout");
+        return;
+      }
+      setEditingWorkoutId(null);
+      await loadAll();
+      notifyDayDataChanged();
+      showSuccessToast("Activity updated");
+    } finally {
+      setActionBusy(null);
     }
-    setEditingWorkoutId(null);
-    await loadAll();
-    notifyDayDataChanged();
   }
 
   async function saveFood(item: FoodEntry) {
-    const resp = await fetch(`/api/manual/food/${item.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: item.title,
-        eatenAt: item.eatenAt,
-        carbsGrams: item.carbsGrams,
-      }),
-    });
-    const json = (await resp.json()) as { error?: string };
-    if (!resp.ok) {
-      setError(json.error ?? "Failed to update food entry");
-      return;
+    setActionBusy("save-food");
+    try {
+      const resp = await fetch(`/api/manual/food/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: item.title,
+          eatenAt: item.eatenAt,
+          carbsGrams: item.carbsGrams,
+          notes: item.notes,
+        }),
+      });
+      const json = (await resp.json()) as { error?: string };
+      if (!resp.ok) {
+        setError(json.error ?? "Failed to update food entry");
+        return;
+      }
+      setEditingFoodId(null);
+      await loadAll();
+      notifyDayDataChanged();
+      showSuccessToast("Food updated");
+    } finally {
+      setActionBusy(null);
     }
-    setEditingFoodId(null);
-    await loadAll();
-    notifyDayDataChanged();
   }
 
   async function deleteWorkout(id: string) {
-    await fetch(`/api/manual/workouts/${id}`, { method: "DELETE" });
-    await loadAll();
-    notifyDayDataChanged();
+    setActionBusy("delete-activity");
+    try {
+      await fetch(`/api/manual/workouts/${id}`, { method: "DELETE" });
+      await loadAll();
+      notifyDayDataChanged();
+      showSuccessToast("Activity deleted");
+    } finally {
+      setActionBusy(null);
+    }
   }
 
   async function deleteFood(id: string) {
-    await fetch(`/api/manual/food/${id}`, { method: "DELETE" });
-    await loadAll();
-    notifyDayDataChanged();
+    setActionBusy("delete-food");
+    try {
+      await fetch(`/api/manual/food/${id}`, { method: "DELETE" });
+      await loadAll();
+      notifyDayDataChanged();
+      showSuccessToast("Food deleted");
+    } finally {
+      setActionBusy(null);
+    }
   }
 
   const tabBtn = (active: boolean) =>
     [
-      "rounded-full px-4 py-2 text-sm font-medium transition-all duration-200",
+      "inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border px-3 py-2 text-sm font-semibold transition-all duration-200",
       active
-        ? "bg-align-forest text-white shadow-sm shadow-black/10"
-        : "border border-align-border/90 bg-white text-zinc-600 shadow-sm shadow-black/[0.02] hover:bg-align-subtle hover:text-zinc-900",
+        ? "border-align-forest bg-align-forest text-white shadow-sm shadow-black/10"
+        : "border-align-border/90 bg-white text-zinc-600 shadow-sm shadow-black/[0.02] hover:border-align-border hover:bg-align-subtle hover:text-zinc-900",
     ].join(" ");
+
+  const focusedEditTitle = useMemo(() => {
+    if (!focusedEdit) return "Add / edit entries";
+    if (focusedEdit.kind === "sleep") return "Edit Sleep";
+    if (focusedEdit.kind === "activity") return "Edit Activity";
+    if (focusedEdit.kind === "food") return "Edit Food";
+    return "Edit";
+  }, [focusedEdit]);
+
+  const addTabHelperText = useMemo(() => {
+    if (tab === "activity") {
+      return "Log movement with optional distance, pace, and notes.";
+    }
+    if (tab === "sleep") {
+      return "Track bedtime and wake time; set repeats if your schedule is regular.";
+    }
+    return "Capture meal timing and optional carbs to improve food-related insights.";
+  }, [tab]);
 
   return (
     <>
+      {toast ? <LightToast message={toast} /> : null}
       {showCard ? (
         <section className="w-full overflow-hidden rounded-2xl border border-align-border/90 bg-white/90 p-5 text-left shadow-sm ring-1 ring-black/[0.03]">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-4">
             <div className="min-w-0">
               <h2 className="text-lg font-semibold tracking-tight text-zinc-900">
                 Log your day
@@ -539,17 +729,6 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                 <span className="font-semibold text-align-forest">{formatHeaderDate(resolvedDateYmd)}</span>
               </p>
             </div>
-            <button
-              type="button"
-              className="group inline-flex shrink-0 items-center gap-2 rounded-full bg-align-forest px-5 py-2.5 text-sm font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted disabled:opacity-50"
-              disabled={loading}
-              onClick={openModal}
-            >
-              <span className="text-base transition group-hover:rotate-12" aria-hidden>
-                ✨
-              </span>
-              Add entry
-            </button>
           </div>
           <p className="mt-3 text-sm text-zinc-600" aria-live={loading ? "polite" : undefined}>
             {loading ? (
@@ -584,7 +763,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                     id="manual-entry-title"
                     className="text-xl font-bold tracking-tight text-zinc-900"
                   >
-                    Add / edit entries
+                    {focusedEditTitle}
                   </h3>
                   <p className="mt-0.5 text-sm font-medium text-align-muted">
                     {formatHeaderDate(resolvedDateYmd)}
@@ -593,7 +772,10 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                 <button
                   type="button"
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-align-border/90 bg-align-subtle text-zinc-500 transition hover:border-align-border hover:bg-white hover:text-zinc-800"
-                  onClick={() => setIsOpen(false)}
+                  onClick={() => {
+                    setIsOpen(false);
+                    setFocusedEdit(null);
+                  }}
                   aria-label="Close"
                 >
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -607,30 +789,36 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                 </button>
               </div>
 
-              <div className="mt-5 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className={tabBtn(tab === "sleep")}
-                  onClick={() => setTab("sleep")}
-                >
-                  😴 Add Sleep
-                </button>
+              {!isFocusedEdit ? (
+              <div className="mt-5 space-y-2">
+                <div className="flex gap-2">
                 <button
                   type="button"
                   className={tabBtn(tab === "activity")}
                   onClick={() => setTab("activity")}
                 >
-                  🏃 Add/Edit Activity
+                  🏃 Workout
+                </button>
+                <button
+                  type="button"
+                  className={tabBtn(tab === "sleep")}
+                  onClick={() => setTab("sleep")}
+                >
+                  😴 Sleep
                 </button>
                 <button
                   type="button"
                   className={tabBtn(tab === "food")}
                   onClick={() => setTab("food")}
                 >
-                  🍽 Add Food
+                  🍽 Food
                 </button>
               </div>
+                <p className="text-xs text-zinc-500">{addTabHelperText}</p>
+              </div>
+              ) : null}
 
+              {!isFocusedEdit ? (
               <div className="mt-6 space-y-5">
                 {tab === "sleep" ? (
                   <>
@@ -714,10 +902,11 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                     ) : null}
                     <button
                       type="button"
-                      className="w-full rounded-full bg-align-forest py-3 text-sm font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted active:scale-[0.99]"
+                      className="w-full rounded-full bg-align-forest py-3 text-sm font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-align-forest"
+                      disabled={isActionBusy}
                       onClick={() => void createSleep()}
                     >
-                      Add sleep
+                      {actionBusy === "create-sleep" ? "Saving…" : "Save sleep"}
                     </button>
                   </>
                 ) : null}
@@ -809,10 +998,11 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                     </div>
                     <button
                       type="button"
-                      className="w-full rounded-full bg-align-forest py-3 text-sm font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted active:scale-[0.99]"
+                      className="w-full rounded-full bg-align-forest py-3 text-sm font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-align-forest"
+                      disabled={isActionBusy}
                       onClick={() => void createWorkout()}
                     >
-                      Add activity
+                      {actionBusy === "create-activity" ? "Saving…" : "Save activity"}
                     </button>
                   </>
                 ) : null}
@@ -827,6 +1017,13 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                         value={foodForm.time}
                         onChange={(e) => setFoodForm((s) => ({ ...s, time: e.target.value }))}
                       />
+                      <p className="text-xs leading-relaxed text-amber-950/90">
+                        <span className="font-semibold">Looks like {foodFormMealPreview}</span>
+                        <span className="font-normal text-zinc-600">
+                          {" "}
+                          — logged using your day timezone (Settings).
+                        </span>
+                      </p>
                     </div>
                     <div className="rounded-2xl border border-dashed border-align-border/90 bg-align-subtle/40 p-4">
                       <FieldLabel>Type (optional)</FieldLabel>
@@ -842,15 +1039,38 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                             onClick={() =>
                               setFoodForm((s) => ({
                                 ...s,
-                                title: p.title,
+                                foodTypeTag: p.typeTag,
                                 carbsGrams: p.carbsHint ?? s.carbsGrams,
                               }))
                             }
                           >
                             <span className="text-2xl">{p.emoji}</span>
-                            <span className="text-[10px] font-semibold text-align-forest">{p.hint}</span>
+                            <span className="text-[10px] font-semibold text-align-forest">{p.title}</span>
+                            <span className="text-[10px] font-medium text-align-muted">{p.hint}</span>
                           </button>
                         ))}
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <FieldLabel>Type tag (optional)</FieldLabel>
+                      <div className="flex flex-wrap gap-2">
+                        {foodForm.foodTypeTag ? (
+                          <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-900">
+                            {foodTypeTagLabel(foodForm.foodTypeTag)}
+                            <button
+                              type="button"
+                              className="rounded-full px-1 text-emerald-700 hover:bg-emerald-100"
+                              aria-label="Clear food type tag"
+                              onClick={() =>
+                                setFoodForm((s) => ({ ...s, foodTypeTag: null }))
+                              }
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="text-xs text-zinc-500">No type selected</span>
+                        )}
                       </div>
                     </div>
                     <div className="space-y-1.5">
@@ -878,18 +1098,381 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                     </div>
                     <button
                       type="button"
-                      className="w-full rounded-full bg-align-forest py-3 text-sm font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted active:scale-[0.99]"
+                      className="w-full rounded-full bg-align-forest py-3 text-sm font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-align-forest"
+                      disabled={isActionBusy}
                       onClick={() => void createFood()}
                     >
-                      Add food
+                      {actionBusy === "create-food" ? "Saving…" : "Save food"}
                     </button>
                   </>
                 ) : null}
               </div>
+              ) : null}
 
-              <div className="my-6 h-px bg-align-border-soft" />
+              {isFocusedEdit ? (
+                <div className="mt-4 space-y-3">
+                  {focusedEdit?.kind === "sleep" && focusedEdit.id ? (
+                    <div className="space-y-5 rounded-2xl border border-align-border/80 bg-white p-4 shadow-sm">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <FieldLabel>Bed date</FieldLabel>
+                          <input
+                            type="date"
+                            className={inputClass(true)}
+                            value={sleepForm.bedDate}
+                            onChange={(e) => setSleepForm((s) => ({ ...s, bedDate: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <FieldLabel>Bed time</FieldLabel>
+                          <input
+                            type="time"
+                            className={inputClass(true)}
+                            value={sleepForm.bedTime}
+                            onChange={(e) => setSleepForm((s) => ({ ...s, bedTime: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <FieldLabel>Wake date</FieldLabel>
+                          <input
+                            type="date"
+                            className={inputClass(true)}
+                            value={sleepForm.wakeDate}
+                            onChange={(e) => setSleepForm((s) => ({ ...s, wakeDate: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <FieldLabel>Wake time</FieldLabel>
+                          <input
+                            type="time"
+                            className={inputClass(true)}
+                            value={sleepForm.wakeTime}
+                            onChange={(e) => setSleepForm((s) => ({ ...s, wakeTime: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <label className="flex items-center gap-2 rounded-full border border-align-border/80 bg-align-subtle/30 px-4 py-3 text-sm font-medium text-zinc-700">
+                        <input
+                          type="checkbox"
+                          checked={sleepForm.recurring}
+                          onChange={(e) => setSleepForm((s) => ({ ...s, recurring: e.target.checked }))}
+                          className="h-4 w-4 rounded border-align-border text-align-forest"
+                        />
+                        <FieldLabel>Repeats</FieldLabel>
+                      </label>
+                      {sleepForm.recurring ? (
+                        <div className="space-y-1.5">
+                          <FieldLabel>Repeat cadence</FieldLabel>
+                          <select
+                            className={inputClass()}
+                            value={sleepForm.recurrenceFreq}
+                            onChange={(e) =>
+                              setSleepForm((s) => ({
+                                ...s,
+                                recurrenceFreq: e.target.value as SleepRecurrenceFreq,
+                              }))
+                            }
+                          >
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                          </select>
+                        </div>
+                      ) : null}
 
-              <div className="space-y-3">
+                      <div className="mt-4 space-y-2">
+                        <button
+                          type="button"
+                          className="w-full rounded-full bg-align-forest py-3 text-sm font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-align-forest"
+                          disabled={isActionBusy}
+                          onClick={() => {
+                            const existing = sleeps.find((r) => r.id === focusedEdit.id);
+                            if (!existing) return;
+                            const sleepStart = toIsoFromDateTime(sleepForm.bedDate, sleepForm.bedTime);
+                            const sleepEnd = toIsoFromDateTime(sleepForm.wakeDate, sleepForm.wakeTime);
+                            const prev = parseSleepRecurrenceMeta(existing.notes);
+                            const seriesId =
+                              prev?.seriesId ??
+                              globalThis.crypto?.randomUUID?.() ??
+                              `series_${existing.id}`;
+                            const notes = sleepForm.recurring
+                              ? buildSleepRecurrenceNotes({
+                                  v: 1,
+                                  seriesId,
+                                  freq: sleepForm.recurrenceFreq,
+                                  anchorSleepStartIso: prev?.anchorSleepStartIso ?? sleepStart,
+                                })
+                              : null;
+                            void saveSleep({ ...existing, sleepStart, sleepEnd, notes });
+                          }}
+                        >
+                          {actionBusy === "save-sleep" ? "Saving…" : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          className="w-full rounded-full border border-red-200 bg-white py-2.5 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white"
+                          disabled={isActionBusy}
+                          onClick={() => {
+                            const existing = sleeps.find((r) => r.id === focusedEdit.id);
+                            if (!existing) return;
+                            void deleteSleep(existing);
+                          }}
+                        >
+                          {actionBusy === "delete-sleep" ? "Deleting…" : "Delete sleep entry"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {focusedEdit?.kind === "activity" && focusedEdit.id ? (
+                    <div className="space-y-5 rounded-2xl border border-align-border/80 bg-white p-4 shadow-sm">
+                      <div className="space-y-2">
+                        <FieldLabel>Type</FieldLabel>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          {WORKOUT_TYPES.map((t) => {
+                            const sel = workoutForm.workoutType === t.key;
+                            return (
+                              <button
+                                key={t.key}
+                                type="button"
+                                aria-pressed={sel}
+                                onClick={() => setWorkoutForm((s) => ({ ...s, workoutType: t.key }))}
+                                className={[
+                                  "flex flex-col items-center gap-1 rounded-2xl border-2 py-3 text-sm font-medium transition duration-150",
+                                  sel
+                                    ? "border-align-forest bg-align-nav-active text-align-forest shadow-sm shadow-black/5"
+                                    : "border-align-border/80 bg-white text-zinc-600 hover:border-align-border hover:bg-align-subtle active:scale-[0.98]",
+                                ].join(" ")}
+                              >
+                                <span className="text-2xl leading-none">{t.emoji}</span>
+                                {t.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <FieldLabel>Start</FieldLabel>
+                          <input
+                            type="time"
+                            className={inputClass(true)}
+                            value={workoutForm.startTime}
+                            onChange={(e) => setWorkoutForm((s) => ({ ...s, startTime: e.target.value }))}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <FieldLabel>End</FieldLabel>
+                          <input
+                            type="time"
+                            className={inputClass(true)}
+                            value={workoutForm.endTime}
+                            onChange={(e) => setWorkoutForm((s) => ({ ...s, endTime: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <FieldLabel>Miles (optional)</FieldLabel>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className={inputClass(true)}
+                          placeholder="e.g. 3.10"
+                          value={workoutForm.distanceMiles}
+                          onChange={(e) => setWorkoutForm((s) => ({ ...s, distanceMiles: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <FieldLabel>Pace (optional, auto)</FieldLabel>
+                        <input
+                          type="text"
+                          className={inputClass()}
+                          placeholder="—"
+                          value={workoutForm.pace}
+                          onChange={(e) => setWorkoutForm((s) => ({ ...s, pace: e.target.value }))}
+                        />
+                        {computedPace && !workoutForm.pace.trim() ? (
+                          <p className="text-xs text-align-forest-muted">
+                            Suggested from time & distance:{" "}
+                            <span className="font-mono font-medium">{computedPace}</span>
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="space-y-1.5">
+                        <FieldLabel>Notes (optional)</FieldLabel>
+                        <input
+                          type="text"
+                          className={inputClass()}
+                          value={workoutForm.notes}
+                          onChange={(e) => setWorkoutForm((s) => ({ ...s, notes: e.target.value }))}
+                          placeholder="Anything notable?"
+                        />
+                      </div>
+                      <div className="mt-4 space-y-2">
+                        <button
+                          type="button"
+                          className="w-full rounded-full bg-align-forest py-3 text-sm font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-align-forest"
+                          disabled={isActionBusy}
+                          onClick={() => {
+                            const existing = workouts.find((r) => r.id === focusedEdit.id);
+                            if (!existing) return;
+                            const miles = workoutForm.distanceMiles ? Number(workoutForm.distanceMiles) : null;
+                            const pace =
+                              workoutForm.pace.trim() ||
+                              (computedPace && computedPace !== "" ? computedPace : null);
+                            void saveWorkout({
+                              ...existing,
+                              workoutType: workoutForm.workoutType,
+                              startedAt: toIsoFromDateTime(workoutForm.date, workoutForm.startTime),
+                              endedAt: workoutForm.endTime
+                                ? toIsoFromDateTime(workoutForm.date, workoutForm.endTime)
+                                : null,
+                              distanceMeters:
+                                miles != null && !Number.isNaN(miles) ? Math.round(miles * METERS_PER_MILE) : null,
+                              pace: pace && pace !== "" ? pace : null,
+                              notes: workoutForm.notes || null,
+                            });
+                          }}
+                        >
+                          {actionBusy === "save-activity" ? "Saving…" : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          className="w-full rounded-full border border-red-200 bg-white py-2.5 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white"
+                          disabled={isActionBusy}
+                          onClick={() => void deleteWorkout(focusedEdit.id)}
+                        >
+                          {actionBusy === "delete-activity" ? "Deleting…" : "Delete activity"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {focusedEdit?.kind === "food" && focusedEdit.id ? (
+                    <div className="space-y-5 rounded-2xl border border-align-border/80 bg-white p-4 shadow-sm">
+                      <div className="space-y-1.5">
+                        <FieldLabel>Time (first bite)</FieldLabel>
+                        <input
+                          type="time"
+                          className={inputClass(true)}
+                          value={foodForm.time}
+                          onChange={(e) => setFoodForm((s) => ({ ...s, time: e.target.value }))}
+                        />
+                        <p className="text-xs leading-relaxed text-amber-950/90">
+                          <span className="font-semibold">Looks like {foodFormMealPreview}</span>
+                          <span className="font-normal text-zinc-600">
+                            {" "}
+                            — logged using your day timezone (Settings).
+                          </span>
+                        </p>
+                      </div>
+                      <div className="rounded-2xl border border-dashed border-align-border/90 bg-align-subtle/40 p-4">
+                        <FieldLabel>Type (optional)</FieldLabel>
+                        <p className="mb-3 text-xs text-zinc-500">
+                          Quick picks — typical glucose curve length as a hint, not medical advice.
+                        </p>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                          {FOOD_PRESETS.map((p) => (
+                            <button
+                              key={p.title}
+                              type="button"
+                              className="flex flex-col items-center gap-0.5 rounded-xl border border-align-border/80 bg-white py-3 text-center shadow-sm transition hover:border-align-forest/40 hover:bg-align-subtle/50 active:scale-[0.98]"
+                              onClick={() =>
+                                setFoodForm((s) => ({
+                                  ...s,
+                                  foodTypeTag: p.typeTag,
+                                  carbsGrams: p.carbsHint ?? s.carbsGrams,
+                                }))
+                              }
+                            >
+                              <span className="text-2xl">{p.emoji}</span>
+                              <span className="text-[10px] font-semibold text-align-forest">{p.title}</span>
+                              <span className="text-[10px] font-medium text-align-muted">{p.hint}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <FieldLabel>Type tag (optional)</FieldLabel>
+                        <div className="flex flex-wrap gap-2">
+                          {foodForm.foodTypeTag ? (
+                            <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-900">
+                              {foodTypeTagLabel(foodForm.foodTypeTag)}
+                              <button
+                                type="button"
+                                className="rounded-full px-1 text-emerald-700 hover:bg-emerald-100"
+                                aria-label="Clear food type tag"
+                                onClick={() =>
+                                  setFoodForm((s) => ({ ...s, foodTypeTag: null }))
+                                }
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ) : (
+                            <span className="text-xs text-zinc-500">No type selected</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        <FieldLabel>Label</FieldLabel>
+                        <input
+                          type="text"
+                          className={inputClass()}
+                          value={foodForm.title}
+                          onChange={(e) => setFoodForm((s) => ({ ...s, title: e.target.value }))}
+                          placeholder="What did you eat?"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <FieldLabel>Carbs (g), optional</FieldLabel>
+                        <input
+                          type="number"
+                          min="0"
+                          className={inputClass(true)}
+                          placeholder="e.g. 45"
+                          value={foodForm.carbsGrams}
+                          onChange={(e) => setFoodForm((s) => ({ ...s, carbsGrams: e.target.value }))}
+                        />
+                      </div>
+                      <div className="mt-4 space-y-2">
+                        <button
+                          type="button"
+                          className="w-full rounded-full bg-align-forest py-3 text-sm font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-align-forest"
+                          disabled={isActionBusy}
+                          onClick={() => {
+                            const existing = foods.find((r) => r.id === focusedEdit.id);
+                            if (!existing) return;
+                            void saveFood({
+                              ...existing,
+                              title: foodForm.title,
+                              eatenAt: zonedDateTimeToUtcIso(foodForm.date, foodForm.time, effectiveTz),
+                              carbsGrams: foodForm.carbsGrams ? Number(foodForm.carbsGrams) : null,
+                              notes: toFoodTypeNote(foodForm.foodTypeTag),
+                            });
+                          }}
+                        >
+                          {actionBusy === "save-food" ? "Saving…" : "Save"}
+                        </button>
+                        <button
+                          type="button"
+                          className="w-full rounded-full border border-red-200 bg-white py-2.5 text-sm font-medium text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-white"
+                          disabled={isActionBusy}
+                          onClick={() => void deleteFood(focusedEdit.id)}
+                        >
+                          {actionBusy === "delete-food" ? "Deleting…" : "Delete food entry"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {false ? <div className="my-6 h-px bg-align-border-soft" /> : null}
+
+              {false ? <div className="space-y-3">
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
                   On this day
                 </p>
@@ -1272,16 +1855,17 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                               <input
                                 className={inputClass(true)}
                                 type="date"
-                                value={toLocalDateInput(f.eatenAt)}
+                                value={utcIsoToZonedDateInput(f.eatenAt, effectiveTz)}
                                 onChange={(e) =>
                                   setFoods((rows) =>
                                     rows.map((r) =>
                                       r.id === f.id
                                         ? {
                                             ...r,
-                                            eatenAt: toIsoFromDateTime(
+                                            eatenAt: zonedDateTimeToUtcIso(
                                               e.target.value,
-                                              toLocalTimeInput(r.eatenAt),
+                                              utcIsoToZonedTimeInput(r.eatenAt, effectiveTz),
+                                              effectiveTz,
                                             ),
                                           }
                                         : r,
@@ -1292,16 +1876,17 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                               <input
                                 className={inputClass(true)}
                                 type="time"
-                                value={toLocalTimeInput(f.eatenAt)}
+                                value={utcIsoToZonedTimeInput(f.eatenAt, effectiveTz)}
                                 onChange={(e) =>
                                   setFoods((rows) =>
                                     rows.map((r) =>
                                       r.id === f.id
                                         ? {
                                             ...r,
-                                            eatenAt: toIsoFromDateTime(
-                                              toLocalDateInput(r.eatenAt),
+                                            eatenAt: zonedDateTimeToUtcIso(
+                                              utcIsoToZonedDateInput(r.eatenAt, effectiveTz),
                                               e.target.value,
+                                              effectiveTz,
                                             ),
                                           }
                                         : r,
@@ -1354,8 +1939,17 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                                   🍽 {f.title}
                                   {f.carbsGrams != null ? ` · ${f.carbsGrams} g carbs` : ""}
                                 </p>
-                                <p className="text-xs text-zinc-500">
-                                  {new Date(f.eatenAt).toLocaleString()}
+                                <p
+                                  className="text-xs text-zinc-500"
+                                  title="Smart guess from the meal time (uses your day timezone setting)"
+                                >
+                                  {inferMealPeriodFromLocalTime(f.eatenAt, effectiveTz).label}
+                                  {" · "}
+                                  {formatInTimeZone(
+                                    new Date(f.eatenAt),
+                                    effectiveTz,
+                                    "MMM d, yyyy · h:mm a",
+                                  )}
                                 </p>
                               </div>
                               <div className="flex gap-2">
@@ -1381,15 +1975,9 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                     })}
                   </ul>
                 )}
-              </div>
+              </div> : null}
 
-              <button
-                type="button"
-                className="mt-6 w-full rounded-full border border-align-border/90 bg-white py-3 text-sm font-semibold text-zinc-800 shadow-sm transition hover:bg-align-subtle"
-                onClick={() => setIsOpen(false)}
-              >
-                Done
-              </button>
+              {/* Close via the X in the header; save/delete live in each editor. */}
             </div>
           </div>
         </div>

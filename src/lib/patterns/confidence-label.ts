@@ -21,13 +21,22 @@ export function confidenceBadgeLabel(percent: number): string {
   return "Low Confidence";
 }
 
-/** Original pill look: forest text on soft green (see pattern insight cards). */
-export const CONFIDENCE_BADGE_SURFACE_CLASS =
-  "inline-flex rounded-full bg-align-nav-active px-2.5 py-1 text-xs font-medium text-align-forest transition-opacity duration-200";
+/** Base badge shape/typography shared across confidence tiers. */
+const CONFIDENCE_BADGE_BASE_CLASS =
+  "inline-flex rounded-full px-2.5 py-1 text-xs font-medium transition-opacity duration-200";
+
+/** Tier-specific badge surface colors. */
+export function confidenceBadgeSurfaceClass(percent: number): string {
+  const tier = confidenceTier(percent);
+  if (tier === "low") {
+    return `${CONFIDENCE_BADGE_BASE_CLASS} bg-amber-100 text-amber-900`;
+  }
+  return `${CONFIDENCE_BADGE_BASE_CLASS} bg-align-nav-active text-align-forest`;
+}
 
 /**
  * Opacity for the whole pill: higher `confidencePercent` → closer to 1 (more visible),
- * lower → more transparent. Same hues as {@link CONFIDENCE_BADGE_SURFACE_CLASS}.
+ * lower → more transparent.
  */
 export function confidenceBadgeOpacity(percent: number): number {
   const clamped = Math.max(0, Math.min(100, percent));

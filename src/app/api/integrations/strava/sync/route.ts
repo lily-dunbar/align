@@ -13,6 +13,7 @@ export async function POST(request: Request) {
   const url = new URL(request.url);
   const wantsJson = url.searchParams.get("format") === "json";
   const { userId } = await auth();
+  let lookbackDays: number | undefined;
 
   if (!userId) {
     if (wantsJson) {
@@ -24,7 +25,19 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await syncStravaActivities(userId);
+    const ct = request.headers.get("content-type") ?? "";
+    if (ct.includes("application/json")) {
+      const body = (await request.json()) as { lookbackDays?: unknown };
+      if (typeof body.lookbackDays === "number" && Number.isFinite(body.lookbackDays)) {
+        lookbackDays = body.lookbackDays;
+      }
+    }
+  } catch {
+    lookbackDays = undefined;
+  }
+
+  try {
+    const result = await syncStravaActivities(userId, lookbackDays);
 
     if (wantsJson) {
       return NextResponse.json({ ok: true, ...result });

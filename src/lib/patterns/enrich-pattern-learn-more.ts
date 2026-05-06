@@ -67,7 +67,7 @@ function buildLearnMore(p: PatternInsightJson, ctx: PatternFeatureContext): Patt
   if (stem === "demo-temporal-lunch") {
     return {
       explanation:
-        "The thick curve is your average glucose by clock hour for the dates you selected. Faint curves are individual local days on the same 24-hour axis so you can see how repeatable the post-lunch bump is versus one-off noise. The shaded band highlights the lunch-to-early-afternoon window in this demo.",
+        "The thick curve is your average glucose by clock hour for the dates you selected. Faint curves are individual local days on the same 24-hour axis so you can see how repeatable the post-lunch bump is versus one-off noise. The shaded band highlights the lunch-to-early-afternoon window.",
       contributingDaysYmd: sampleDays(ev.cgmDaysSample),
       contributingNote: baseNote(),
       chart: hourChart(ctx, [[11, 13]]),
@@ -111,7 +111,11 @@ function buildLearnMore(p: PatternInsightJson, ctx: PatternFeatureContext): Patt
     };
   }
 
-  if (stem.startsWith("temporal-weekday-weekend") || stem === "demo-temporal-weekday") {
+  if (
+    stem.startsWith("temporal-weekday-weekend") ||
+    stem === "demo-temporal-weekday" ||
+    stem === "demo-temporal-weekend"
+  ) {
     const tw = ctx.temporal.weekdayMeanMgdl;
     const we = ctx.temporal.weekendMeanMgdl;
     if (tw != null && we != null) {
@@ -209,7 +213,11 @@ function buildLearnMore(p: PatternInsightJson, ctx: PatternFeatureContext): Patt
     }
   }
 
-  if (stem.startsWith("sess-run-delta") || (stem.startsWith("llm-") && p.type === "Sessions")) {
+  if (
+    stem.startsWith("sess-run-delta") ||
+    stem === "demo-sessions-activity" ||
+    (stem.startsWith("llm-") && p.type === "Sessions")
+  ) {
     const items = ev.sessionDeltas.map((d) => ({
       label: d.label,
       deltaMgdl: d.deltaMgdl,

@@ -18,3 +18,6 @@ const client = postgres(url, { max: 1, prepare: false });
 
 export const db = drizzle(client, { schema });
 export { schema };
+
+/** Same connection pool as Drizzle — for rare idempotent DDL when migrations lag the deployed code. */
+export const pg = client;

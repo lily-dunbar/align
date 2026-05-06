@@ -1,6 +1,6 @@
 import { PatternLearnMorePanel } from "@/components/pattern-learn-more-panel";
 import {
-  CONFIDENCE_BADGE_SURFACE_CLASS,
+  confidenceBadgeSurfaceClass,
   confidenceBadgeLabel,
   confidenceBadgeOpacity,
   humanConfidenceLabel,
@@ -50,7 +50,7 @@ export function PatternInsightCard({ pattern, compact, targetLowMgdl, targetHigh
 
       <div className={`flex flex-wrap items-center gap-2.5 ${compact ? "mt-3" : "mt-4"}`}>
         <span
-          className={CONFIDENCE_BADGE_SURFACE_CLASS}
+          className={confidenceBadgeSurfaceClass(pattern.confidencePercent)}
           style={{ opacity: confidenceBadgeOpacity(pattern.confidencePercent) }}
           title={confidenceHint}
         >

@@ -118,6 +118,7 @@ export function OnboardingWizard({ initialPrefs }: { initialPrefs: UserPreferenc
         showActivity: prefs.showActivity,
         showSleep: prefs.showSleep,
         showFood: prefs.showFood,
+        showCarbsLoggedSummary: prefs.showCarbsLoggedSummary,
       });
       goTo("targets");
     } catch (e) {

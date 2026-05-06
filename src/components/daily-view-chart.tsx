@@ -8,6 +8,8 @@ import { formatInTimeZone, toDate } from "date-fns-tz";
 import { DailyViewChartSkeleton } from "@/components/skeleton";
 import { useEffectiveTimeZone } from "@/hooks/use-effective-timezone";
 import { DAY_DATA_CHANGED_EVENT } from "@/lib/day-view-events";
+import { foodTypeAbsorptionHours, parseFoodTypeTag } from "@/lib/food-type-tag";
+import { inferMealPeriodFromLocalTime } from "@/lib/infer-meal-period";
 import { getLocalCalendarYmd } from "@/lib/local-calendar-ymd";
 import { useResolvedDayYmd } from "@/lib/use-resolved-day-ymd";
 import {
@@ -53,7 +55,7 @@ type DayApiResponse = {
       activityType?: string | null;
     }>;
     sleepWindows: Array<{ id: string; sleepStart: string; sleepEnd: string }>;
-    foodEntries: Array<{ id: string; eatenAt: string; title: string }>;
+    foodEntries: Array<{ id: string; eatenAt: string; title: string; notes?: string | null }>;
   };
 };
 
@@ -144,7 +146,9 @@ const FOOD_BAND_FILL = "#EFF1CD";
 const FOOD_BAND_FILL_OPACITY = 0.4;
 
 /** Rough absorption window for shaded band (hours from first bite). */
-function foodAbsorptionDurationHours(title: string): number {
+function foodAbsorptionDurationHours(title: string, notes?: string | null): number {
+  const tagged = parseFoodTypeTag(notes);
+  if (tagged) return foodTypeAbsorptionHours(tagged);
   const t = title.toLowerCase();
   if (t.includes("low impact")) return 0.5;
   if (t.includes("fast acting")) return 1;
@@ -483,10 +487,11 @@ function foodEntryTooltip(
   timeZone: string,
 ): string {
   const title = (f.title.trim() || "Food").replace(/\s+/g, " ");
+  const { label: mealHint } = inferMealPeriodFromLocalTime(f.eatenAt, timeZone);
   const when = formatShortClock(f.eatenAt, timeZone);
-  const hrs = foodAbsorptionDurationHours(f.title);
+  const hrs = foodAbsorptionDurationHours(f.title, f.notes);
   const windowLabel = hrs === 1 ? "~1h" : `~${hrs}h`;
-  return `${title} · ${when} · ${windowLabel} absorption window (modeled)`;
+  return `${title} · ${mealHint} · ${when} · ${windowLabel} absorption window (modeled)`;
 }
 
 function usePrefersReducedMotion(): boolean {
@@ -612,7 +617,56 @@ export function DailyViewChart({ dateYmd }: Props) {
     const tz = payload.day.timeZone;
     const isTodayView = resolvedDateYmd === getLocalCalendarYmd(new Date(), tz);
     if (!isTodayView && timelineWindow === "12h") {
-      setTimelineWindow("24h");
+      queueMicrotask(() => setTimelineWindow("24h"));
+    }
+  }, [payload, resolvedDateYmd, timelineWindow]);
+
+  /**
+   * If you're in 12h view (today-only) but log something outside the rolling window,
+   * switch back to 24h so every day-overview entry is visible on the chart.
+   */
+  useEffect(() => {
+    if (!payload) return;
+    if (timelineWindow !== "12h") return;
+    const tz = payload.day.timeZone;
+    const isTodayView = resolvedDateYmd === getLocalCalendarYmd(new Date(), tz);
+    if (!isTodayView) return;
+
+    const domain12h = timelineDomain12h(resolvedDateYmd, tz, new Date());
+    const [xMin, xMax] = domain12h;
+
+    let minHour = Number.POSITIVE_INFINITY;
+    let maxHour = Number.NEGATIVE_INFINITY;
+
+    for (const w of payload.streams.manualWorkouts) {
+      const { x1, x2 } = activityBandXRange(w.startedAt, w.endedAt, tz);
+      minHour = Math.min(minHour, x1);
+      maxHour = Math.max(maxHour, x2);
+    }
+
+    for (const a of payload.streams.stravaActivities ?? []) {
+      const { x1, x2 } = activityBandXRange(a.startAt, stravaActivityEndIso(a), tz);
+      minHour = Math.min(minHour, x1);
+      maxHour = Math.max(maxHour, x2);
+    }
+
+    for (const f of payload.streams.foodEntries) {
+      const x = toLocalHourFraction(f.eatenAt, tz);
+      minHour = Math.min(minHour, x);
+      maxHour = Math.max(maxHour, x);
+    }
+
+    for (const s of payload.streams.sleepWindows) {
+      const x1 = toLocalHourFraction(s.sleepStart, tz);
+      const x2 = toLocalHourFraction(s.sleepEnd, tz);
+      minHour = Math.min(minHour, x1, x2);
+      maxHour = Math.max(maxHour, x1, x2);
+    }
+
+    if (!Number.isFinite(minHour) || !Number.isFinite(maxHour)) return;
+    const eps = 1e-6;
+    if (minHour < xMin - eps || maxHour > xMax + eps) {
+      queueMicrotask(() => setTimelineWindow("24h"));
     }
   }, [payload, resolvedDateYmd, timelineWindow]);
 
@@ -735,7 +789,7 @@ export function DailyViewChart({ dateYmd }: Props) {
   return (
     <section className="w-full min-w-0 rounded-2xl border border-align-border/90 bg-white/90 p-5 text-left ring-1 ring-black/[0.03] backdrop-blur-[2px] md:p-6">
       <div className="flex flex-row items-center justify-between gap-3">
-        <h2 className="min-w-0 flex-1 text-base font-semibold tracking-tight text-foreground md:text-lg">
+        <h2 className="min-w-0 flex-1 text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
           Daily View
         </h2>
         <div className="flex shrink-0 items-center gap-1">
@@ -759,10 +813,10 @@ export function DailyViewChart({ dateYmd }: Props) {
                 }}
                 className={
                   selected
-                    ? "rounded-full bg-align-forest px-2.5 py-1 text-center text-[10px] font-medium leading-none text-white shadow-sm shadow-black/10"
+                    ? "inline-flex min-h-9 min-w-[2.9rem] items-center justify-center rounded-full bg-align-forest px-2.5 py-1 text-center text-[11px] font-medium leading-none text-white shadow-sm shadow-black/10"
                     : disabled
-                      ? "cursor-not-allowed rounded-full bg-zinc-100 px-2.5 py-1 text-center text-[10px] font-medium leading-none text-zinc-400 ring-1 ring-black/[0.04]"
-                      : "rounded-full bg-align-subtle px-2.5 py-1 text-center text-[10px] font-medium leading-none text-zinc-600 ring-1 ring-black/[0.04] hover:bg-white"
+                      ? "inline-flex min-h-9 min-w-[2.9rem] items-center justify-center cursor-not-allowed rounded-full bg-zinc-100 px-2.5 py-1 text-center text-[11px] font-medium leading-none text-zinc-400 ring-1 ring-black/[0.04]"
+                      : "inline-flex min-h-9 min-w-[2.9rem] items-center justify-center rounded-full bg-align-subtle px-2.5 py-1 text-center text-[11px] font-medium leading-none text-zinc-600 ring-1 ring-black/[0.04] hover:bg-white"
                 }
               >
                 {label}
@@ -778,7 +832,9 @@ export function DailyViewChart({ dateYmd }: Props) {
         <div className="flex h-full min-h-0 w-full">
           {isMobileScreen ? (
             <div
-              className="flex h-full w-10 shrink-0 flex-col border-r border-black/[0.06] bg-gradient-to-b from-align-subtle/90 to-align-canvas/40"
+              className={`flex h-full shrink-0 flex-col border-r border-black/[0.06] bg-gradient-to-b from-align-subtle/90 to-align-canvas/40 ${
+                isVerySmallScreen ? "w-12" : "w-11"
+              }`}
               aria-hidden
             >
               <ResponsiveContainer width="100%" height="100%" minHeight={260}>
@@ -799,7 +855,8 @@ export function DailyViewChart({ dateYmd }: Props) {
                     tick={{ fontSize: isVerySmallScreen ? 10 : 11 }}
                     tickFormatter={(v) => (v < GLUCOSE_FLOOR ? "" : String(v))}
                     allowDecimals={false}
-                    width={34}
+                    tickMargin={6}
+                    width={isVerySmallScreen ? 42 : 38}
                   />
                 </ComposedChart>
               </ResponsiveContainer>

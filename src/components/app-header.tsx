@@ -28,7 +28,7 @@ function UserMenuIcon() {
 }
 
 type AppHeaderProps = {
-  /** True when per-user dev mode or site `DEMO_MODE` env is on — shows the yellow banner. */
+  /** True when Demo Mode is on for this account (Settings) — shows the yellow banner. */
   devModeBanner?: boolean;
 };
 

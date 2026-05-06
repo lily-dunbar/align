@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { DexcomBackfillPrompt } from "@/components/dexcom-backfill-prompt";
 import { SettingsAccountCard } from "@/components/settings-account-card";
 import { DisplayPreferencesCard } from "@/components/display-preferences-card";
 import { SettingsDeveloperCard } from "@/components/settings-developer-card";
@@ -23,6 +24,7 @@ import {
 } from "@/db/schema";
 import { isDeveloperSettingsEnabled } from "@/lib/developer-settings";
 import { needsOnboarding } from "@/lib/onboarding";
+import { getUserPreferences } from "@/lib/user-display-preferences";
 import { DEXCOM_SHARE_UI_HIDDEN_COOKIE } from "@/lib/dexcom/share-ui-cookie";
 import { isPydexcomShareConfigured } from "@/lib/dexcom/share-sync";
 
@@ -149,6 +151,11 @@ export default async function SettingsPage({
 
   const showDeveloperSettings = isDeveloperSettingsEnabled();
 
+  const userPrefs = await getUserPreferences(userId);
+  const dexcomConnected = !!dexcomRow || (shareDexcom && !shareUiDismissed);
+  const showDexcomBackfillPrompt =
+    dexcomConnected && !userPrefs.dexcomBackfill90PromptDismissed;
+
   const developerPrefsRow = await db.query.userDisplayPreferences.findFirst({
     where: eq(userDisplayPreferences.userId, userId),
     columns: { developerDemoMode: true, onboardingCompleted: true },
@@ -202,6 +209,10 @@ export default async function SettingsPage({
         <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
           Strava: {stravaErr}
         </p>
+      ) : null}
+
+      {showDexcomBackfillPrompt ? (
+        <DexcomBackfillPrompt shareCredentialsMode={shareDexcom} />
       ) : null}
 
       <SettingsIntegrations

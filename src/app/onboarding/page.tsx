@@ -36,20 +36,27 @@ export default async function OnboardingPage() {
     shareDexcom &&
     cookieStore.get(DEXCOM_SHARE_UI_HIDDEN_COOKIE)?.value === userId;
 
-  const [dexcomRow, stravaRow, stepTok] = await Promise.all([
-    db.query.dexcomTokens.findFirst({
-      where: eq(dexcomTokens.userId, userId),
-      columns: { userId: true },
-    }),
-    db.query.stravaTokens.findFirst({
-      where: eq(stravaTokens.userId, userId),
-      columns: { userId: true },
-    }),
-    db.query.stepIngestTokens.findFirst({
-      where: eq(stepIngestTokens.userId, userId),
-      columns: { token: true },
-    }),
-  ]);
+  let dexcomRow: { userId: string } | undefined;
+  let stravaRow: { userId: string } | undefined;
+  let stepTok: { token: string } | undefined;
+  try {
+    [dexcomRow, stravaRow, stepTok] = await Promise.all([
+      db.query.dexcomTokens.findFirst({
+        where: eq(dexcomTokens.userId, userId),
+        columns: { userId: true },
+      }),
+      db.query.stravaTokens.findFirst({
+        where: eq(stravaTokens.userId, userId),
+        columns: { userId: true },
+      }),
+      db.query.stepIngestTokens.findFirst({
+        where: eq(stepIngestTokens.userId, userId),
+        columns: { token: true },
+      }),
+    ]);
+  } catch (error) {
+    console.warn("Skipping onboarding integration checks while DB is unavailable.", error);
+  }
 
   const dexcomConnected =
     !!dexcomRow || (shareDexcom && !shareUiDismissed);

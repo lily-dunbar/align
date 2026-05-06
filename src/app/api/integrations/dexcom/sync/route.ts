@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
 import { syncDexcomGlucoseReadings } from "@/lib/dexcom/client";
+import { updateUserPreferences } from "@/lib/user-display-preferences";
 import { sanitizeOAuthReturnTo } from "@/lib/oauth-return-to";
 import { getPublicAppBaseUrl } from "@/lib/public-app-base-url";
 
@@ -23,12 +24,19 @@ export async function POST(request: Request) {
   }
 
   let shareOptions: { lookbackDays?: number } | undefined;
+  let dismissDexcomBackfillPrompt = false;
   try {
     const ct = request.headers.get("content-type") ?? "";
     if (ct.includes("application/json")) {
-      const body = (await request.json()) as { lookbackDays?: unknown };
+      const body = (await request.json()) as {
+        lookbackDays?: unknown;
+        dismissDexcomBackfillPrompt?: unknown;
+      };
       if (body && typeof body.lookbackDays === "number" && Number.isFinite(body.lookbackDays)) {
         shareOptions = { lookbackDays: body.lookbackDays };
+      }
+      if (body?.dismissDexcomBackfillPrompt === true) {
+        dismissDexcomBackfillPrompt = true;
       }
     }
   } catch {
@@ -37,6 +45,9 @@ export async function POST(request: Request) {
 
   try {
     const result = await syncDexcomGlucoseReadings(userId, shareOptions);
+    if (dismissDexcomBackfillPrompt) {
+      await updateUserPreferences(userId, { dexcomBackfill90PromptDismissed: true });
+    }
     if (wantsJson) {
       return NextResponse.json({ ok: true, ...result });
     }

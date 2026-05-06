@@ -69,6 +69,15 @@ function noise(seed: number): number {
   return x - Math.floor(x);
 }
 
+function hashString(s: string): number {
+  let h = 1779033703;
+  for (let i = 0; i < s.length; i += 1) {
+    h = Math.imul(h ^ s.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return (h >>> 0) || 1;
+}
+
 function main() {
   if (!DEMO_USER_ID) {
     console.error("Set DEMO_USER_ID to your Clerk user id (e.g. user_2abc…).");
@@ -167,8 +176,9 @@ async function seed() {
 
   for (let dayIdx = 0; dayIdx < DEMO_DAYS; dayIdx++) {
     const dayStartUtc = addDays(endMidnightUtc, -(DEMO_DAYS - 1) + dayIdx);
-    const isRunDay = dayIdx % 3 === 0;
     const isWeekend = (dayIdx + 6) % 7 >= 5;
+    const runRoll = hashString(`run|${dayIdx}|${DEMO_TIME_ZONE}`) % 100;
+    const isRunDay = runRoll < (isWeekend ? 68 : 78);
 
     for (let min = 0; min < 1440; min += 5) {
       const observedAt = addMinutes(dayStartUtc, min);
@@ -242,13 +252,29 @@ async function seed() {
       });
     }
 
-    await db.insert(foodEntries).values({
-      userId,
-      eatenAt: addMinutes(addHours(dayStartUtc, 12), 25),
-      title: "Lunch",
-      carbsGrams: 55,
-      notes: DEMO_FOOD_NOTE,
-    });
+    await db.insert(foodEntries).values([
+      {
+        userId,
+        eatenAt: addMinutes(addHours(dayStartUtc, 7), 50),
+        title: "Breakfast",
+        carbsGrams: 34,
+        notes: DEMO_FOOD_NOTE,
+      },
+      {
+        userId,
+        eatenAt: addHours(dayStartUtc, 11),
+        title: "Lunch",
+        carbsGrams: 55,
+        notes: DEMO_FOOD_NOTE,
+      },
+      {
+        userId,
+        eatenAt: addMinutes(addHours(dayStartUtc, 18), 25),
+        title: "Dinner",
+        carbsGrams: 64,
+        notes: DEMO_FOOD_NOTE,
+      },
+    ]);
 
     const sleepStart = addHours(dayStartUtc, 23);
     const sleepEnd = addHours(addDays(dayStartUtc, 1), 6.5);

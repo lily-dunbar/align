@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 
+import { ToggleSwitch } from "@/components/toggle-switch";
 import { DAY_DATA_CHANGED_EVENT } from "@/lib/day-view-events";
 import type { UserPreferences } from "@/lib/user-display-preferences";
 
@@ -107,64 +108,31 @@ export function SettingsDeveloperCard({
   }, []);
 
   return (
-    <section className="w-full rounded-2xl border border-align-border/80 bg-align-subtle/50 p-5 text-left ring-1 ring-black/[0.03]">
-      <h2 className="text-lg font-semibold tracking-tight text-zinc-900">
+    <section className="w-full rounded-2xl border border-align-border/90 bg-white/90 p-5 text-left ring-1 ring-black/[0.03]">
+      <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
         {demoOnly ? "Dev mode" : "Developer"}
       </h2>
-      <p className="mt-1 text-sm text-zinc-600">
-        {demoOnly ? (
-          <>
-            Turn on to preview the app with synthetic CGM, steps, workouts, and sleep (your integrations are unchanged).
-            Turn off anytime to return to your real data.
-          </>
-        ) : (
-          <>
-            Tools for demos and local testing. In production, enable{" "}
-            <code className="rounded bg-zinc-200/80 px-1 font-mono text-xs">ENABLE_DEVELOPER_SETTINGS</code>
-            .
-          </>
-        )}
-      </p>
 
-      <div className="mt-4 space-y-4 border-t border-zinc-200 pt-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
+      <div className="mt-4 divide-y divide-zinc-100 rounded-xl border border-zinc-100 bg-zinc-50/50">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-4 py-3.5">
+          <div className="min-w-0">
             <p className="text-sm font-medium text-zinc-900">Dev mode</p>
             <p className="mt-0.5 text-xs text-zinc-500">
-              Shows the yellow banner and loads sample data across Home and Patterns{" "}
-              {!demoOnly ? (
-                <>
-                  (also if <code className="font-mono">DEMO_MODE</code> is set in env).
-                </>
-              ) : (
-                <>
-                  (site-wide <code className="font-mono">DEMO_MODE</code> can also show the banner).
-                </>
-              )}
+              Shows the yellow banner and loads sample data across Home and Patterns. Turn off anytime to use
+              your real data on this device.
             </p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={demoMode}
+          <ToggleSwitch
+            id="dev-mode-toggle"
+            checked={demoMode}
             disabled={busy === "demo"}
-            onClick={() => void setDemoModeRequest(!demoMode)}
-            className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border border-zinc-200 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400 disabled:cursor-not-allowed disabled:opacity-50 ${
-              demoMode ? "bg-amber-400" : "bg-zinc-300"
-            }`}
-          >
-            <span
-              className={`pointer-events-none inline-block h-6 w-6 translate-y-0.5 rounded-full bg-white shadow ring-1 ring-zinc-200 transition-transform ${
-                demoMode ? "translate-x-5" : "translate-x-1"
-              }`}
-            />
-            <span className="sr-only">{demoMode ? "Dev mode on" : "Dev mode off"}</span>
-          </button>
+            onChange={() => void setDemoModeRequest(!demoMode)}
+          />
         </div>
 
         {demoOnly ? null : (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
               <div>
                 <p className="text-sm font-medium text-zinc-900">Reset manual entries</p>
                 <p className="mt-0.5 text-xs text-zinc-500">
@@ -173,7 +141,7 @@ export function SettingsDeveloperCard({
               </div>
               <button
                 type="button"
-                className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-800 shadow-sm hover:bg-red-50 disabled:opacity-50"
+                className="inline-flex min-w-[8.25rem] items-center justify-center rounded-full border border-red-200 bg-white px-3 py-1 text-sm font-medium text-red-800 shadow-sm hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={busy !== null}
                 onClick={() => void resetManual()}
               >
@@ -181,7 +149,7 @@ export function SettingsDeveloperCard({
               </button>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
               <div>
                 <p className="text-sm font-medium text-zinc-900">Reset onboarding</p>
                 <p className="mt-0.5 text-xs text-zinc-500">
@@ -192,7 +160,7 @@ export function SettingsDeveloperCard({
                 <span className="text-xs text-zinc-500">{onboardingDone ? "Done" : "Pending"}</span>
                 <button
                   type="button"
-                  className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-100 disabled:opacity-50"
+                  className="inline-flex min-w-[9.25rem] items-center justify-center rounded-full border border-zinc-200 bg-white px-3 py-1 text-sm font-medium text-zinc-800 shadow-sm hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={busy !== null}
                   onClick={() => void resetOnboarding()}
                 >

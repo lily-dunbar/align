@@ -7,6 +7,8 @@ import {
   type DemoGlucoseDayState,
   ymdInZone,
 } from "@/lib/demo/demo-bg-curve";
+import { toFoodTypeNote } from "@/lib/food-type-tag";
+import { getDemoDayProfile } from "@/lib/demo/demo-day-profile";
 import { metersToMilesDisplay } from "@/lib/distance-units";
 import type { UserPreferences } from "@/lib/user-display-preferences";
 import { calculateTir, type GlucosePoint } from "@/lib/tir";
@@ -94,20 +96,32 @@ function weekendDemoFoodEntries(args: {
     {
       id: `demo-food-wknd-a-${d}`,
       eatenAt: eatenAtBeforePeakHour(state.spike1Center),
-      title: "Brunch (fast acting)",
+      title: "Brunch",
       carbsGrams: 52,
       proteinGrams: 18,
       fatGrams: 14,
       calories: 420,
+      notes: toFoodTypeNote("fast_acting"),
     },
     {
       id: `demo-food-wknd-b-${d}`,
       eatenAt: eatenAtBeforePeakHour(state.spike2Center),
-      title: "Snack (fast acting)",
+      title: "Lunch",
       carbsGrams: 38,
       proteinGrams: 8,
       fatGrams: 12,
       calories: 310,
+      notes: toFoodTypeNote("fast_acting"),
+    },
+    {
+      id: `demo-food-wknd-c-${d}`,
+      eatenAt: eatenAtBeforePeakHour(state.spike3Center),
+      title: "Dinner",
+      carbsGrams: 62,
+      proteinGrams: 26,
+      fatGrams: 24,
+      calories: 610,
+      notes: toFoodTypeNote("slow_acting"),
     },
   ].sort((a, b) => a.eatenAt.getTime() - b.eatenAt.getTime());
 
@@ -120,7 +134,7 @@ function weekendDemoFoodEntries(args: {
     proteinGrams: r.proteinGrams,
     fatGrams: r.fatGrams,
     calories: r.calories,
-    notes: null as string | null,
+    notes: r.notes,
     createdAt: r.eatenAt,
     updatedAt: r.eatenAt,
   }));
@@ -140,6 +154,7 @@ export function buildDemoDayApiPayload(args: DemoDayArgs) {
   const isWeekend = wday === 5 || wday === 6;
   const ymd = ymdInZone(startUtc, timeZone);
   const glucoseState = getDemoGlucoseDayState(ymd, DEMO_BG_CURVE_SEED, isWeekend);
+  const dayProfile = getDemoDayProfile(ymd, DEMO_BG_CURVE_SEED);
 
   /** Prior evening → morning — overlaps midnight so the chart shows overnight sleep */
   const sleepStart = addMinutes(startUtc, -150);
@@ -182,23 +197,40 @@ export function buildDemoDayApiPayload(args: DemoDayArgs) {
     updatedAt: g.observedAt,
   }));
 
+  const weights: number[] = [];
+  for (let hourBucket = 0; hourBucket < 24; hourBucket += 1) {
+    let w = 35 + noise(hourBucket * 19 + wday + dh) * 28;
+    if (!isWeekend) {
+      if (hourBucket === 8) w += 420;
+      if (hourBucket === 12) w += 95;
+      if (hourBucket === 17) w += 900;
+      if (hourBucket === 18) w += 480;
+    } else if (hourBucket >= 9 && hourBucket <= 20) {
+      w += noise(hourBucket * 31 + dh) * 180;
+    }
+    weights.push(Math.max(8, w));
+  }
+  const wSum = weights.reduce((a, b) => a + b, 0);
+  const targetSteps = Math.max(800, dayProfile.dailySteps);
   const hourlyStepsRows = [];
+  let allocated = 0;
   for (let hourBucket = 0; hourBucket < 24; hourBucket += 1) {
     const bucketStart = addHours(startUtc, hourBucket);
-    let steps = Math.round(240 + noise(hourBucket * 19 + wday + dh) * 130);
-    if (!isWeekend) {
-      if (hourBucket === 8) steps += 2200;
-      if (hourBucket === 12) steps += 450;
-      if (hourBucket === 17) steps += 4800;
-      if (hourBucket === 18) steps += 2600;
-    } else if (hourBucket >= 9 && hourBucket <= 20) {
-      steps += Math.round(noise(hourBucket * 31 + dh) * 1800);
+    let stepCount: number;
+    if (hourBucket < 23) {
+      stepCount = Math.max(
+        0,
+        Math.min(16000, Math.round((weights[hourBucket]! / wSum) * targetSteps)),
+      );
+      allocated += stepCount;
+    } else {
+      stepCount = Math.max(0, Math.min(16000, targetSteps - allocated));
     }
     hourlyStepsRows.push({
       id: `demo-steps-${date ?? "d"}-${hourBucket}`,
       userId,
       bucketStart,
-      stepCount: Math.max(0, Math.min(16000, steps)),
+      stepCount,
       source: "demo_preview",
       receivedAt: bucketStart,
       createdAt: bucketStart,
@@ -209,38 +241,64 @@ export function buildDemoDayApiPayload(args: DemoDayArgs) {
   const runStart = addMinutes(addHours(startUtc, 17), 30);
   const runEnd = addMinutes(runStart, 30);
 
-  const stravaActivities = isWeekend
-    ? []
-    : [
-        {
-          id: `demo-strava-${date ?? "d"}`,
-          userId,
-          provider: "strava" as const,
-          providerActivityId: `align_demo_preview_${date ?? "today"}`,
-          name: "After work loop",
-          activityType: "Run",
-          sportType: "Run",
-          startAt: runStart,
-          endAt: runEnd,
-          durationSec: 30 * 60,
-          movingTimeSec: 28 * 60,
-          elapsedTimeSec: 30 * 60,
-          distanceMeters: RUN_DISTANCE_METERS,
-          totalElevationGainMeters: 42,
-          averageHeartrate: 148,
-          maxHeartrate: 172,
-          averageWatts: null as number | null,
-          kilojoules: 340,
-          calories: 300,
-          sourcePayload: null as string | null,
-          createdAt: runStart,
-          updatedAt: runStart,
-        },
-      ];
+  const stravaActivities =
+    dayProfile.hasDistanceRun
+      ? [
+          {
+            id: `demo-strava-${date ?? "d"}`,
+            userId,
+            provider: "strava" as const,
+            providerActivityId: `align_demo_preview_${date ?? "today"}`,
+            name: "After work loop",
+            activityType: "Run",
+            sportType: "Run",
+            startAt: runStart,
+            endAt: runEnd,
+            durationSec: 30 * 60,
+            movingTimeSec: 28 * 60,
+            elapsedTimeSec: 30 * 60,
+            distanceMeters: RUN_DISTANCE_METERS,
+            totalElevationGainMeters: 42,
+            averageHeartrate: 148,
+            maxHeartrate: 172,
+            averageWatts: null as number | null,
+            kilojoules: 340,
+            calories: 300,
+            sourcePayload: null as string | null,
+            createdAt: runStart,
+            updatedAt: runStart,
+          },
+        ]
+      : [];
+
+  const swimStart = dayProfile.hasLongSwim
+    ? addMinutes(startUtc, Math.max(0, Math.round((dayProfile.swimPeakHour - 0.38) * 60)))
+    : null;
+  const swimEnd = swimStart ? addMinutes(swimStart, 42) : null;
+
+  const manualWorkouts =
+    swimStart && swimEnd
+      ? [
+          {
+            id: `demo-swim-${date ?? "d"}`,
+            userId,
+            workoutType: "Pool swim",
+            startedAt: swimStart,
+            endedAt: swimEnd,
+            distanceMeters: null as number | null,
+            pace: null as string | null,
+            durationMin: 42,
+            intensity: "moderate" as string | null,
+            notes: null as string | null,
+            createdAt: swimStart,
+            updatedAt: swimStart,
+          },
+        ]
+      : [];
 
   /**
-   * Weekday: lunch before the CGM bump; fast carb absorption band precedes the crest.
-   * Weekend: two entries ~35 min before each Gaussian spike peak (same seed as CGM).
+   * Weekday: three meals aligned with the modeled breakfast/lunch/dinner rises.
+   * Weekend: three entries ~35 min before each modeled spike peak.
    */
   const WEEKEND_LEAD_BEFORE_PEAK_MIN = 35;
 
@@ -252,20 +310,48 @@ export function buildDemoDayApiPayload(args: DemoDayArgs) {
 
   const foodEntries = !isWeekend
     ? (() => {
-        const lunchAt = addMinutes(startUtc, 11 * 60 + 45);
+        const breakfastAt = addMinutes(startUtc, Math.round((8.25 * 60) - WEEKEND_LEAD_BEFORE_PEAK_MIN));
+        const lunchAt = addMinutes(startUtc, 11 * 60);
+        const dinnerAt = addMinutes(startUtc, Math.round((19.05 * 60) - WEEKEND_LEAD_BEFORE_PEAK_MIN));
         return [
+          {
+            id: `demo-food-breakfast-${date ?? "d"}`,
+            userId,
+            eatenAt: breakfastAt,
+            title: "Breakfast",
+            carbsGrams: 34,
+            proteinGrams: 22,
+            fatGrams: 14,
+            calories: 380,
+            notes: toFoodTypeNote("low_impact"),
+            createdAt: breakfastAt,
+            updatedAt: breakfastAt,
+          },
           {
             id: `demo-food-${date ?? "d"}`,
             userId,
             eatenAt: lunchAt,
-            title: "Lunch (fast acting)",
+            title: "Lunch",
             carbsGrams: 72,
             proteinGrams: 32,
             fatGrams: 16,
             calories: 580,
-            notes: null as string | null,
+            notes: toFoodTypeNote("fast_acting"),
             createdAt: lunchAt,
             updatedAt: lunchAt,
+          },
+          {
+            id: `demo-food-dinner-${date ?? "d"}`,
+            userId,
+            eatenAt: dinnerAt,
+            title: "Dinner",
+            carbsGrams: 66,
+            proteinGrams: 34,
+            fatGrams: 22,
+            calories: 690,
+            notes: toFoodTypeNote("slow_acting"),
+            createdAt: dinnerAt,
+            updatedAt: dinnerAt,
           },
         ];
       })()
@@ -291,6 +377,8 @@ export function buildDemoDayApiPayload(args: DemoDayArgs) {
   ];
 
   const totalSteps = hourlyStepsRows.reduce((s, r) => s + r.stepCount, 0);
+  const workoutsDurationMin =
+    (stravaActivities.length ? 30 : 0) + (manualWorkouts.length ? 42 : 0);
   const sleepMinutes = Math.round(
     sleepWindows.reduce((sum, s) => {
       const ms = overlapMs(s.sleepStart, s.sleepEnd, startUtc, endUtcExclusive);
@@ -319,8 +407,8 @@ export function buildDemoDayApiPayload(args: DemoDayArgs) {
       avgGlucoseMgdl,
       glucoseCount: glucose.length,
       totalSteps,
-      workoutsCount: 0,
-      workoutsDurationMin: 0,
+      workoutsCount: stravaActivities.length + manualWorkouts.length,
+      workoutsDurationMin,
       foodEntriesCount: foodEntries.length,
       foodCarbsGrams,
       foodCalories,
@@ -333,7 +421,7 @@ export function buildDemoDayApiPayload(args: DemoDayArgs) {
     streams: {
       glucose,
       hourlySteps: hourlyStepsRows,
-      manualWorkouts: [] as unknown[],
+      manualWorkouts,
       foodEntries,
       sleepWindows,
       stravaActivities,

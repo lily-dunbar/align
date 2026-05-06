@@ -41,6 +41,9 @@ export async function PATCH(request: Request) {
   if (typeof body.showActivity === "boolean") patch.showActivity = body.showActivity;
   if (typeof body.showSleep === "boolean") patch.showSleep = body.showSleep;
   if (typeof body.showFood === "boolean") patch.showFood = body.showFood;
+  if (typeof body.showCarbsLoggedSummary === "boolean") {
+    patch.showCarbsLoggedSummary = body.showCarbsLoggedSummary;
+  }
   if (body.ianaTimeZone !== undefined) {
     try {
       patch.ianaTimeZone = parseOptionalIanaTimeZone(body.ianaTimeZone);
@@ -61,6 +64,9 @@ export async function PATCH(request: Request) {
   if (typeof body.developerDemoMode === "boolean") patch.developerDemoMode = body.developerDemoMode;
   if (typeof body.onboardingCompleted === "boolean") {
     patch.onboardingCompleted = body.onboardingCompleted;
+  }
+  if (typeof body.dexcomBackfill90PromptDismissed === "boolean") {
+    patch.dexcomBackfill90PromptDismissed = body.dexcomBackfill90PromptDismissed;
   }
 
   if (Object.keys(patch).length === 0) {

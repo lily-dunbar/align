@@ -3,3 +3,11 @@ export const DAY_DATA_CHANGED_EVENT = "align:day-data-changed";
 
 /** Fired to open the manual entry modal (activity / food) for the current day. */
 export const OPEN_MANUAL_MODAL_EVENT = "align:open-manual-modal";
+
+export type OpenManualModalDetail = {
+  tab?: "sleep" | "activity" | "food";
+  edit?: {
+    kind: "sleep" | "activity" | "food";
+    id: string;
+  };
+};

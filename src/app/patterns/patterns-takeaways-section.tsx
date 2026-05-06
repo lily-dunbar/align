@@ -1,5 +1,4 @@
 import { PatternsInsightsPanel } from "@/components/patterns-insights-panel";
-import { PatternsRegenerateButton } from "@/components/patterns-regenerate-button";
 import { getPatternsFeatureJsonForIso } from "@/lib/patterns/feature-json";
 import type { PatternWindow } from "@/lib/patterns/types";
 
@@ -23,7 +22,6 @@ export async function PatternsTakeawaysSection({
             Insights
           </h2>
         </div>
-        <PatternsRegenerateButton />
       </div>
       <PatternsInsightsPanel data={feature} />
     </div>

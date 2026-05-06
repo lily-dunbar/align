@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AlignMetricCard } from "@/components/align-metric-card";
 import { DaySummaryCardsSkeleton } from "@/components/skeleton";
 import { useEffectiveTimeZone } from "@/hooks/use-effective-timezone";
-import { DAY_DATA_CHANGED_EVENT } from "@/lib/day-view-events";
+import { DAY_DATA_CHANGED_EVENT, OPEN_MANUAL_MODAL_EVENT } from "@/lib/day-view-events";
 import { useResolvedDayYmd } from "@/lib/use-resolved-day-ymd";
 
 type DaySummaryResponse = {
@@ -23,6 +23,7 @@ type DaySummaryResponse = {
     };
     avgGlucoseMgdl: number | null;
     totalSteps: number;
+    foodCarbsGrams?: number;
   };
 };
 
@@ -34,18 +35,25 @@ export function DaySummaryCards({ dateYmd }: Props) {
   const resolvedDateYmd = useResolvedDayYmd(dateYmd);
   const effectiveTz = useEffectiveTimeZone();
   const [data, setData] = useState<DaySummaryResponse | null>(null);
+  const [showCarbsLogged, setShowCarbsLogged] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const loadSummary = useCallback(async () => {
     setError(null);
     try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
-      const resp = await fetch(
-        `/api/day?date=${encodeURIComponent(resolvedDateYmd)}&timeZone=${encodeURIComponent(tz)}`,
-        { cache: "no-store" },
-      );
+      const [resp, prefResp] = await Promise.all([
+        fetch(
+          `/api/day?date=${encodeURIComponent(resolvedDateYmd)}&timeZone=${encodeURIComponent(effectiveTz)}`,
+          { cache: "no-store" },
+        ),
+        fetch("/api/settings/preferences", { cache: "no-store" }),
+      ]);
       const json = (await resp.json()) as DaySummaryResponse & { error?: string };
       if (!resp.ok) throw new Error(json.error ?? "Failed to load day summary");
+      const prefsJson = (await prefResp.json()) as {
+        preferences?: { showCarbsLoggedSummary?: boolean };
+      };
+      setShowCarbsLogged(prefsJson.preferences?.showCarbsLoggedSummary ?? true);
       setData(json);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
@@ -103,10 +111,15 @@ export function DaySummaryCards({ dateYmd }: Props) {
       ? `${Math.min(100, Math.round((steps / stepGoal) * 100))}% of ${stepGoal.toLocaleString()} goal`
       : undefined;
 
+  const totalCarbs = data.aggregates.foodCarbsGrams ?? 0;
+  const gridClass = showCarbsLogged
+    ? "grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:gap-4"
+    : "grid gap-3 sm:grid-cols-3 sm:gap-4";
+
   return (
     <section className="w-full">
       <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">Day summary</h2>
-      <div className="grid gap-3 sm:grid-cols-3 sm:gap-4">
+      <div className={gridClass}>
         <AlignMetricCard
           variant="glucose"
           title="Avg glucose"
@@ -122,6 +135,33 @@ export function DaySummaryCards({ dateYmd }: Props) {
           value={steps.toLocaleString()}
           subtitle={stepsSubtitle}
         />
+        {showCarbsLogged ? (
+          <AlignMetricCard
+            variant="carbs"
+            title="Carbs logged"
+            value={totalCarbs === 0 ? "—" : `${totalCarbs}`}
+            valueUnit={totalCarbs === 0 ? undefined : "g"}
+            subtitle={
+              totalCarbs === 0 ? (
+                <span>
+                  Add carb grams when you log food in{" "}
+                  <button
+                    type="button"
+                    className="font-semibold text-amber-950 underline decoration-amber-800/35 underline-offset-2 hover:decoration-amber-900/70"
+                    onClick={() =>
+                      window.dispatchEvent(
+                        new CustomEvent(OPEN_MANUAL_MODAL_EVENT, { detail: { tab: "food" } }),
+                      )
+                    }
+                  >
+                    Manual entry → Food
+                  </button>
+                  .
+                </span>
+              ) : undefined
+            }
+          />
+        ) : null}
       </div>
     </section>
   );

@@ -116,15 +116,18 @@ export function SettingsTargetsCard() {
 
   return (
     <section className="w-full rounded-2xl border border-align-border/90 bg-white/90 p-5 ring-1 ring-black/[0.03]">
-      <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Targets</h2>
+      <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
+        Targets
+      </h2>
 
       {loading ? (
-        <div className="mt-5 space-y-4" aria-busy="true" aria-label="Loading targets">
+        <div
+          className="mt-4 divide-y divide-zinc-100 rounded-xl border border-zinc-100 bg-zinc-50/50"
+          aria-busy="true"
+          aria-label="Loading targets"
+        >
           {[0, 1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-100 pb-4"
-            >
+            <div key={i} className="flex flex-wrap items-center justify-between gap-4 px-4 py-3.5">
               <Skeleton className="h-4 w-28" />
               <Skeleton className="h-10 w-28 rounded-lg" />
             </div>
@@ -134,8 +137,8 @@ export function SettingsTargetsCard() {
       {error ? <p className="mt-4 text-sm text-red-600">{error}</p> : null}
 
       {prefs ? (
-        <div className="mt-5 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-100 pb-4">
+        <div className="mt-4 divide-y divide-zinc-100 rounded-xl border border-zinc-100 bg-zinc-50/50">
+          <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-3.5">
             <span className="text-sm text-zinc-800">Low (mg/dL)</span>
             <input
               type="number"
@@ -147,7 +150,7 @@ export function SettingsTargetsCard() {
               disabled={saving}
             />
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-100 pb-4">
+          <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-3.5">
             <span className="text-sm text-zinc-800">High (mg/dL)</span>
             <input
               type="number"
@@ -159,7 +162,7 @@ export function SettingsTargetsCard() {
               disabled={saving}
             />
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-100 pb-4">
+          <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-3.5">
             <span className="text-sm text-zinc-800">
               Target TIR ({TARGET_TIR_MIN}–{TARGET_TIR_MAX}%)
             </span>
@@ -182,7 +185,7 @@ export function SettingsTargetsCard() {
               </span>
             </div>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-100 pb-4">
+          <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-3.5">
             <span className="text-sm text-zinc-800">
               Steps / day ({TARGET_STEPS_MIN.toLocaleString()}–{TARGET_STEPS_MAX.toLocaleString()})
             </span>
@@ -198,10 +201,10 @@ export function SettingsTargetsCard() {
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 pt-2">
+          <div className="flex flex-wrap items-center gap-3 px-4 py-3.5">
             <button
               type="button"
-              className="rounded-lg border border-align-border/80 bg-white px-4 py-2 text-sm font-medium text-zinc-600 shadow-sm shadow-black/[0.02] transition hover:border-align-border hover:bg-align-subtle hover:text-zinc-800 disabled:cursor-not-allowed disabled:border-align-border/60 disabled:bg-white disabled:text-zinc-500 disabled:opacity-60 disabled:shadow-none disabled:hover:bg-white"
+              className="inline-flex min-w-[7.25rem] items-center justify-center rounded-full bg-align-forest px-3.5 py-1.5 text-sm font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted disabled:cursor-not-allowed disabled:bg-align-forest/50 disabled:text-white/90 disabled:opacity-60 disabled:shadow-none disabled:hover:bg-align-forest/50"
               disabled={saving || !targetsDirty}
               onClick={() => void saveTargets()}
             >

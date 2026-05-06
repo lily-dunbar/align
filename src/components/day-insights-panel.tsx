@@ -2,12 +2,16 @@
 
 import { useAuth } from "@clerk/nextjs";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { formatInTimeZone } from "date-fns-tz";
+import { addDays } from "date-fns";
+import { formatInTimeZone, toDate } from "date-fns-tz";
 
 import { DayInsightsListSkeleton } from "@/components/skeleton";
 import { useEffectiveTimeZone } from "@/hooks/use-effective-timezone";
 import { metersToMilesDisplay } from "@/lib/distance-units";
-import { DAY_DATA_CHANGED_EVENT } from "@/lib/day-view-events";
+import { DAY_DATA_CHANGED_EVENT, OPEN_MANUAL_MODAL_EVENT } from "@/lib/day-view-events";
+import { foodTypeAbsorptionHours, foodTypeTagLabel, parseFoodTypeTag } from "@/lib/food-type-tag";
+import { inferMealPeriodFromLocalTime } from "@/lib/infer-meal-period";
+import { parseSleepRecurrenceMeta, type SleepRecurrenceFreq } from "@/lib/manual/sleep-recurrence";
 import { useResolvedDayYmd } from "@/lib/use-resolved-day-ymd";
 
 type DayResponse = {
@@ -37,11 +41,14 @@ type DayResponse = {
       id: string;
       eatenAt: string;
       title: string;
+      carbsGrams?: number | null;
+      notes?: string | null;
     }>;
     sleepWindows: Array<{
       id: string;
       sleepStart: string;
       sleepEnd: string;
+      notes?: string | null;
     }>;
   };
   error?: string;
@@ -55,6 +62,7 @@ type ActivityKind = "manual" | "strava" | "food" | "sleep";
 
 type ActivityItem = {
   id: string;
+  rawId: string;
   kind: ActivityKind;
   title: string;
   startIso: string;
@@ -63,6 +71,14 @@ type ActivityItem = {
   bgDeltaMgdl: number | null;
   /** Manual workouts and Strava only — miles displayed when greater than zero */
   distanceMeters?: number | null;
+  /** Food entries only — carbs logged for this meal */
+  carbsGrams?: number | null;
+  /** Food entries — modeled absorption type shown in the activity chip */
+  foodTypeLabel?: string;
+  /** Food entries — coarse meal from local time (breakfast / lunch / dinner / snack) */
+  mealPeriodLabel?: string;
+  /** Sleep windows — recurrence cadence (daily / weekly) when present */
+  recurrenceFreq?: SleepRecurrenceFreq;
 };
 
 const KIND_LABEL: Record<ActivityKind, string> = {
@@ -96,7 +112,9 @@ function addMinutes(iso: string, minutes: number) {
   return new Date(t + minutes * 60_000).toISOString();
 }
 
-function foodWindowMinutes(title: string) {
+function foodWindowMinutes(title: string, notes?: string | null) {
+  const tagged = parseFoodTypeTag(notes);
+  if (tagged) return Math.round(foodTypeAbsorptionHours(tagged) * 60);
   const t = title.toLowerCase();
   if (t.includes("low impact")) return 30;
   if (t.includes("fast acting")) return 60;
@@ -105,6 +123,16 @@ function foodWindowMinutes(title: string) {
   if (/snack|fruit|yogurt|apple|cracker|bar\b/.test(t)) return 60;
   if (/pasta|burger|fried|burrito|lasagna|rice bowl|pizza/.test(t)) return 150;
   return 120;
+}
+
+function inferredFoodTypeLabel(title: string, notes?: string | null): string {
+  const tagged = parseFoodTypeTag(notes);
+  if (tagged) return foodTypeTagLabel(tagged);
+  const minutes = foodWindowMinutes(title, notes);
+  if (minutes <= 45) return "Low impact";
+  if (minutes <= 75) return "Fast acting";
+  if (minutes <= 150) return "Medium acting";
+  return "Slow acting";
 }
 
 function nearestGlucoseMgdl(
@@ -135,6 +163,41 @@ function bgDeltaForWindow(
   const end = nearestGlucoseMgdl(glucose, endIso);
   if (start == null || end == null) return null;
   return Math.round(end - start);
+}
+
+function startOfLocalDayInZone(ymd: string, timeZone: string): Date {
+  return toDate(`${ymd}T00:00:00`, { timeZone });
+}
+
+function endOfLocalDayExclusiveInZone(ymd: string, timeZone: string): Date {
+  const tomorrowYmd = formatInTimeZone(
+    addDays(toDate(`${ymd}T12:00:00`, { timeZone }), 1),
+    timeZone,
+    "yyyy-MM-dd",
+  );
+  return toDate(`${tomorrowYmd}T00:00:00`, { timeZone });
+}
+
+function clampWindowToViewedLocalDay(
+  startIso: string,
+  endIso: string,
+  viewedYmd: string,
+  timeZone: string,
+): { startIso: string; endIso: string } | null {
+  const startMs = new Date(startIso).getTime();
+  const endMs = new Date(endIso).getTime();
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null;
+
+  const dayStartMs = startOfLocalDayInZone(viewedYmd, timeZone).getTime();
+  const dayEndMs = endOfLocalDayExclusiveInZone(viewedYmd, timeZone).getTime();
+  const clampedStart = Math.max(startMs, dayStartMs);
+  const clampedEnd = Math.min(endMs, dayEndMs);
+  if (clampedEnd <= clampedStart) return null;
+
+  return {
+    startIso: new Date(clampedStart).toISOString(),
+    endIso: new Date(clampedEnd).toISOString(),
+  };
 }
 
 function formatClockInZone(iso: string, timeZone: string) {
@@ -237,6 +300,34 @@ function IconRoute({ className }: { className?: string }) {
         strokeLinecap="round"
         strokeLinejoin="round"
         d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 13L9 7"
+      />
+    </svg>
+  );
+}
+
+function IconRepeat({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M3.75 7.5h12a3 3 0 0 1 3 3V12m0 0-2.25-2.25M18.75 12 21 9.75M20.25 16.5h-12a3 3 0 0 1-3-3V12m0 0 2.25 2.25M5.25 12 3 14.25"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function IconEdit({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        d="M4.5 19.5h3.75L19.5 8.25 15.75 4.5 4.5 15.75V19.5zM13.5 6.75l3.75 3.75"
+        stroke="currentColor"
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
@@ -352,6 +443,35 @@ export function DayInsightsPanel({ dateYmd }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<DayResponse | null>(null);
 
+  const deleteItem = useCallback(async (item: ActivityItem) => {
+    if (item.kind === "strava") return;
+
+    const label =
+      item.kind === "manual"
+        ? "this activity"
+        : item.kind === "food"
+          ? "this food entry"
+          : "this sleep entry";
+
+    const isRecurringSleep = item.kind === "sleep" && item.recurrenceFreq != null;
+    const ok = window.confirm(
+      isRecurringSleep
+        ? "Delete this sleep entry?\n\nThis will delete only this day (not the whole repeating series)."
+        : `Delete ${label}?`,
+    );
+    if (!ok) return;
+
+    const url =
+      item.kind === "manual"
+        ? `/api/manual/workouts/${item.rawId}`
+        : item.kind === "food"
+          ? `/api/manual/food/${item.rawId}`
+          : `/api/manual/sleep/${item.rawId}`;
+
+    await fetch(url, { method: "DELETE" });
+    window.dispatchEvent(new CustomEvent(DAY_DATA_CHANGED_EVENT));
+  }, []);
+
   const runFetch = useCallback(async () => {
     if (!isLoaded || !userId) return;
     setLoading(true);
@@ -379,7 +499,7 @@ export function DayInsightsPanel({ dateYmd }: Props) {
   }, [resolvedDateYmd, effectiveTz, userId, isLoaded]);
 
   useEffect(() => {
-    void runFetch();
+    queueMicrotask(() => void runFetch());
   }, [runFetch]);
 
   useEffect(() => {
@@ -393,18 +513,25 @@ export function DayInsightsPanel({ dateYmd }: Props) {
   const activities = useMemo<ActivityItem[]>(() => {
     if (!data) return [];
     const glucose = data.streams.glucose;
+    const tz = data.day.timeZone ?? effectiveTz;
+    const clippedDelta = (startIso: string, endIso: string): number | null => {
+      const clipped = clampWindowToViewedLocalDay(startIso, endIso, resolvedDateYmd, tz);
+      if (!clipped) return null;
+      return bgDeltaForWindow(glucose, clipped.startIso, clipped.endIso);
+    };
 
     const manual = data.streams.manualWorkouts.map((w) => {
       const fallbackEnd = addMinutes(w.startedAt, w.durationMin ?? 30);
       const endIso = w.endedAt ?? fallbackEnd;
       return {
         id: `manual-${w.id}`,
+        rawId: w.id,
         kind: "manual" as const,
         title: w.workoutType?.trim() || "Workout",
         startIso: w.startedAt,
         endIso,
         durationMin: w.durationMin ?? durationMinutes(w.startedAt, endIso),
-        bgDeltaMgdl: bgDeltaForWindow(glucose, w.startedAt, endIso),
+        bgDeltaMgdl: clippedDelta(w.startedAt, endIso),
         distanceMeters: w.distanceMeters ?? null,
       };
     });
@@ -415,6 +542,7 @@ export function DayInsightsPanel({ dateYmd }: Props) {
       const label = a.sportType?.trim() || a.activityType?.trim() || "Activity";
       return {
         id: `strava-${a.id}`,
+        rawId: a.id,
         kind: "strava" as const,
         title: label,
         startIso: a.startAt,
@@ -422,39 +550,46 @@ export function DayInsightsPanel({ dateYmd }: Props) {
         durationMin: a.durationSec
           ? Math.max(1, Math.round(a.durationSec / 60))
           : durationMinutes(a.startAt, endIso),
-        bgDeltaMgdl: bgDeltaForWindow(glucose, a.startAt, endIso),
+        bgDeltaMgdl: clippedDelta(a.startAt, endIso),
         distanceMeters: a.distanceMeters ?? null,
       };
     });
 
     const food = data.streams.foodEntries.map((f) => {
-      const minutes = foodWindowMinutes(f.title);
+      const minutes = foodWindowMinutes(f.title, f.notes);
       const endIso = addMinutes(f.eatenAt, minutes);
+      const { label: mealPeriodLabel } = inferMealPeriodFromLocalTime(f.eatenAt, tz);
       return {
         id: `food-${f.id}`,
+        rawId: f.id,
         kind: "food" as const,
         title: f.title.trim() || "Food",
         startIso: f.eatenAt,
         endIso,
         durationMin: minutes,
-        bgDeltaMgdl: bgDeltaForWindow(glucose, f.eatenAt, endIso),
+        bgDeltaMgdl: clippedDelta(f.eatenAt, endIso),
+        carbsGrams: f.carbsGrams ?? null,
+        foodTypeLabel: inferredFoodTypeLabel(f.title, f.notes),
+        mealPeriodLabel,
       };
     });
 
     const sleep = data.streams.sleepWindows.map((s) => ({
       id: `sleep-${s.id}`,
+      rawId: s.id,
       kind: "sleep" as const,
       title: "Sleep",
       startIso: s.sleepStart,
       endIso: s.sleepEnd,
       durationMin: durationMinutes(s.sleepStart, s.sleepEnd),
-      bgDeltaMgdl: bgDeltaForWindow(glucose, s.sleepStart, s.sleepEnd),
+      bgDeltaMgdl: clippedDelta(s.sleepStart, s.sleepEnd),
+      recurrenceFreq: parseSleepRecurrenceMeta(s.notes)?.freq,
     }));
 
     return [...manual, ...strava, ...food, ...sleep].sort(
       (a, b) => new Date(a.startIso).getTime() - new Date(b.startIso).getTime(),
     );
-  }, [data]);
+  }, [data, effectiveTz, resolvedDateYmd]);
 
   const timeZone = data?.day.timeZone ?? effectiveTz;
 
@@ -464,7 +599,9 @@ export function DayInsightsPanel({ dateYmd }: Props) {
         className="w-full rounded-2xl border border-align-border/90 bg-white/90 p-5 ring-1 ring-black/[0.03] backdrop-blur-[2px] md:p-6"
         aria-busy
       >
-        <h2 className="text-base font-semibold tracking-tight text-foreground">Day overview</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
+          Activities
+        </h2>
         <DayInsightsListSkeleton />
       </section>
     );
@@ -480,18 +617,21 @@ export function DayInsightsPanel({ dateYmd }: Props) {
       aria-busy={loading}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="min-w-0 text-base font-semibold tracking-tight text-foreground">
-          Day overview
+        <h2 className="min-w-0 text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
+          Activities
         </h2>
-        <span className="rounded-full bg-align-nav-active px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-align-forest">
-          {loading ? "Loading…" : `${activities.length} ${activities.length === 1 ? "event" : "events"}`}
-        </span>
+        <button
+          type="button"
+          className="rounded-full border border-zinc-200 bg-zinc-100 px-3 py-1.5 text-sm font-semibold text-zinc-800 shadow-sm shadow-black/[0.03] transition hover:bg-zinc-200 active:scale-[0.99]"
+          onClick={() =>
+            window.dispatchEvent(
+              new CustomEvent(OPEN_MANUAL_MODAL_EVENT, { detail: { tab: "activity" } }),
+            )
+          }
+        >
+          Add activity
+        </button>
       </div>
-      <p className="mt-1.5 text-xs leading-relaxed text-zinc-500">
-        Glucose change compares the nearest CGM readings to the start and end of each window (arrows = direction). If you
-        see “No CGM delta,” there weren’t readings close enough to both times.
-      </p>
-
       {error ? (
         <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
           {error}
@@ -510,13 +650,31 @@ export function DayInsightsPanel({ dateYmd }: Props) {
               <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                 <div className="min-w-0 flex-1 space-y-3">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span
-                      className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${KIND_BADGE_CLASS[item.kind]}`}
-                    >
-                      {KIND_LABEL[item.kind]}
-                    </span>
+                    {item.kind !== "food" ? (
+                      <span
+                        className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${KIND_BADGE_CLASS[item.kind]}`}
+                      >
+                        {KIND_LABEL[item.kind]}
+                      </span>
+                    ) : null}
+                    {item.kind === "food" ? (
+                      <span
+                        className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${KIND_BADGE_CLASS.food}`}
+                      >
+                        Food
+                      </span>
+                    ) : null}
+                    {item.kind === "sleep" && item.recurrenceFreq ? (
+                      <span
+                        className="inline-flex shrink-0 items-center text-teal-700"
+                        title={`Recurring sleep: ${item.recurrenceFreq}`}
+                        aria-label={`Recurring sleep: ${item.recurrenceFreq}`}
+                      >
+                        <IconRepeat className="h-4 w-4" />
+                      </span>
+                    ) : null}
                     <h3 className="text-[15px] font-semibold leading-snug tracking-tight text-align-forest">
-                      {item.title}
+                      {item.kind === "sleep" ? "Sleep" : item.title}
                     </h3>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -524,10 +682,16 @@ export function DayInsightsPanel({ dateYmd }: Props) {
                       <IconCalendar className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
                       <span className="font-medium">{formatTimeRangeLocal(item.startIso, item.endIso, timeZone)}</span>
                     </span>
-                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-50/90 px-2.5 py-1.5 text-xs text-zinc-800 ring-1 ring-black/[0.05]">
-                      <IconClock className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
-                      <span className="font-medium">{formatDuration(item.durationMin)}</span>
-                    </span>
+                    {item.kind === "food" ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-50/90 px-2.5 py-1.5 text-xs text-zinc-800 ring-1 ring-black/[0.05]">
+                        <span className="font-medium">{item.foodTypeLabel ?? "Medium acting"}</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-50/90 px-2.5 py-1.5 text-xs text-zinc-800 ring-1 ring-black/[0.05]">
+                        <IconClock className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                        <span className="font-medium">{formatDuration(item.durationMin)}</span>
+                      </span>
+                    )}
                     {(item.kind === "manual" || item.kind === "strava") &&
                     item.distanceMeters != null &&
                     item.distanceMeters > 0 ? (
@@ -536,10 +700,78 @@ export function DayInsightsPanel({ dateYmd }: Props) {
                         <span className="font-medium tabular-nums">{formatDistanceMi(item.distanceMeters)}</span>
                       </span>
                     ) : null}
+                    {item.kind === "food" ? (
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium tabular-nums ring-1 ring-black/[0.04] ${
+                          item.carbsGrams != null
+                            ? "border border-[color:rgb(212_225_150_/_0.55)] bg-[#EFF1CD]/90 text-[#365314]"
+                            : "border border-zinc-200/90 bg-zinc-50/95 text-zinc-600"
+                        }`}
+                        title={item.carbsGrams == null ? "Carbs not logged for this food entry yet" : undefined}
+                      >
+                        {item.carbsGrams != null ? `${item.carbsGrams} g carbs` : "Carbs not logged"}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
                 <div className="shrink-0 sm:max-w-[11rem] sm:pt-0.5">
                   <BgDeltaChip delta={item.bgDeltaMgdl} />
+                  {item.kind !== "strava" ? (
+                    <div className="mt-2 flex justify-end gap-1.5">
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center rounded-md border border-zinc-200 bg-white p-1.5 text-zinc-700 hover:bg-zinc-50"
+                        aria-label={`Edit ${item.kind === "sleep" ? "sleep" : item.title}`}
+                        title="Edit"
+                        onClick={() =>
+                          window.dispatchEvent(
+                            new CustomEvent(OPEN_MANUAL_MODAL_EVENT, {
+                              detail: {
+                                tab:
+                                  item.kind === "manual"
+                                    ? "activity"
+                                    : item.kind === "food"
+                                      ? "food"
+                                      : "sleep",
+                                edit: {
+                                  kind:
+                                    item.kind === "manual"
+                                      ? "activity"
+                                      : item.kind === "food"
+                                        ? "food"
+                                        : "sleep",
+                                  id: item.rawId,
+                                },
+                              },
+                            }),
+                          )
+                        }
+                      >
+                        <IconEdit className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center rounded-md border border-red-200 bg-white p-1.5 text-red-600 hover:bg-red-50"
+                        aria-label={`Delete ${item.kind === "sleep" ? "sleep" : item.title}`}
+                        title="Delete"
+                        onClick={() => void deleteItem(item)}
+                      >
+                        <svg
+                          className="h-3.5 w-3.5"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M6 7h12m-10 0l.7 13.2A2 2 0 009.7 22h4.6a2 2 0 002-1.8L17 7M9 7V5.5A2.5 2.5 0 0111.5 3h1A2.5 2.5 0 0115 5.5V7"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </li>

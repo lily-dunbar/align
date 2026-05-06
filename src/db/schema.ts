@@ -366,10 +366,16 @@ export const userDisplayPreferences = pgTable("user_display_preferences", {
   targetHighMgdl: integer("target_high_mgdl").notNull().default(180),
   targetTirPercent: integer("target_tir_percent").notNull().default(70),
   targetStepsPerDay: integer("target_steps_per_day").notNull().default(10000),
-  /** When true (with env `DEMO_MODE` or alone), app shell shows the demo banner for this user. */
+  /** When true, synthetic demo data and the Demo Mode banner are shown for this user. */
   developerDemoMode: boolean("developer_demo_mode").notNull().default(false),
   /** First-run / onboarding; new accounts default incomplete until the wizard finishes. */
   onboardingCompleted: boolean("onboarding_completed").notNull().default(false),
+  /** One-time Dexcom 90-day import prompt was completed or dismissed. */
+  dexcomBackfill90PromptDismissed: boolean("dexcom_backfill_90_prompt_dismissed")
+    .notNull()
+    .default(false),
+  /** Show the \"Carbs logged\" card in Day summary. */
+  showCarbsLoggedSummary: boolean("show_carbs_logged_summary").notNull().default(true),
   /** IANA zone (e.g. America/Los_Angeles). Null = use browser zone for day/insights boundaries. */
   ianaTimeZone: text("iana_time_zone"),
   createdAt: timestamp("created_at", { withTimezone: true })

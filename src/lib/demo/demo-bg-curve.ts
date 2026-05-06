@@ -1,9 +1,10 @@
 /**
- * Demo CGM: realistic-looking glucose — post-meal rise and exercise-associated dip on weekdays;
- * weekends are looser (irregular meals, no scripted workout dip).
+ * Demo CGM: food-linked spikes, run dips, swim bumps, steps↔glucose, higher weekends — driven by `DemoDayProfile`.
  */
 
 import { formatInTimeZone } from "date-fns-tz";
+
+import { getDemoDayProfile, type DemoDayProfile } from "@/lib/demo/demo-day-profile";
 
 export const DEMO_BG_CURVE_SEED = "align-demo-bg-t1-v1";
 
@@ -51,10 +52,9 @@ export function gaussBump(h: number, center: number, sigma: number, height: numb
 }
 
 /**
- * Weekday shape: smooth baseline + carb spike after lunch + drop during post-work run (local hours).
- * Food log should sit slightly before the bump; Strava run spans ~5:30–6:00pm.
+ * Weekday basal shape + three meal-related spikes (breakfast/lunch/dinner).
  */
-export function weekdayArchetypeMgdl(h: number): number {
+export function weekdayBaseLunchMgdl(h: number): number {
   let b: number;
   if (h < 5) {
     b = lerp(98, 104, smoothstep01(h / 5));
@@ -65,11 +65,25 @@ export function weekdayArchetypeMgdl(h: number): number {
   } else {
     b = lerp(122, 100, smoothstep01((h - 23) / 1));
   }
+  // Peaks are intentionally after meal logs so list/graph read as "food -> rise".
+  return (
+    b +
+    gaussBump(h, 8.25, 0.42, 28) +
+    gaussBump(h, 12.95, 0.48, 56) +
+    gaussBump(h, 19.05, 0.5, 36)
+  );
+}
 
-  const lunchSpike = gaussBump(h, 12.42, 0.42, 56);
-  const exerciseDip = gaussBump(h, 17.75, 0.32, 34);
-
-  return b + lunchSpike - exerciseDip;
+export function weekdayGlucoseFromProfile(h: number, profile: DemoDayProfile): number {
+  let v =
+    weekdayBaseLunchMgdl(h) + profile.stepsGlucoseShift + profile.weekendGlucoseLift;
+  if (profile.hasDistanceRun) {
+    v -= gaussBump(h, 17.75, 0.32, profile.runDipDepth);
+  }
+  if (profile.hasLongSwim) {
+    v += gaussBump(h, profile.swimPeakHour, 0.36, profile.swimBumpMgdl);
+  }
+  return v;
 }
 
 export type DemoGlucoseDayState = {
@@ -79,6 +93,8 @@ export type DemoGlucoseDayState = {
   spike2Center: number;
   spike1Height: number;
   spike2Height: number;
+  spike3Center: number;
+  spike3Height: number;
 };
 
 export function getDemoGlucoseDayState(
@@ -96,6 +112,8 @@ export function getDemoGlucoseDayState(
       spike2Center: 0,
       spike1Height: 0,
       spike2Height: 0,
+      spike3Center: 0,
+      spike3Height: 0,
     };
   }
 
@@ -109,6 +127,8 @@ export function getDemoGlucoseDayState(
   }
   const spike1Height = 62 + weekendSpikeRng() * 18;
   const spike2Height = 58 + weekendSpikeRng() * 20;
+  const spike3Center = 18.9 + weekendSpikeRng() * 1.2;
+  const spike3Height = 34 + weekendSpikeRng() * 12;
 
   return {
     dailyOffset,
@@ -116,15 +136,18 @@ export function getDemoGlucoseDayState(
     spike2Center,
     spike1Height,
     spike2Height,
+    spike3Center,
+    spike3Height,
   };
 }
 
-/** Elevated baseline + two irregular meal spikes (local 10:00–20:00). */
+/** Elevated baseline + three meal-like spikes (local day). */
 export function weekendArchetypeMgdl(h: number, state: DemoGlucoseDayState): number {
   const band = 155 + Math.sin((h / 24) * Math.PI * 2) * 12;
   const s1 = gaussBump(h, state.spike1Center, 0.42, state.spike1Height);
   const s2 = gaussBump(h, state.spike2Center, 0.38, state.spike2Height);
-  return band + s1 + s2;
+  const s3 = gaussBump(h, state.spike3Center, 0.46, state.spike3Height);
+  return band + s1 + s2 + s3;
 }
 
 export function demoGlucoseMgdlForSample(params: {
@@ -136,16 +159,21 @@ export function demoGlucoseMgdlForSample(params: {
   state: DemoGlucoseDayState;
 }): number {
   const { hourF, slotIndex, ymd, seed, isWeekend, state } = params;
+  const profile = getDemoDayProfile(ymd, seed);
 
   let mgdl: number;
   if (!isWeekend) {
-    mgdl = weekdayArchetypeMgdl(hourF);
+    mgdl = weekdayGlucoseFromProfile(hourF, profile);
     mgdl += state.dailyOffset;
-    mgdl += demoSlotNoise(seed, ymd, slotIndex, 3);
+    mgdl += demoSlotNoise(seed, ymd, slotIndex, 2.5);
   } else {
     mgdl = weekendArchetypeMgdl(hourF, state);
-    mgdl += state.dailyOffset * 1.1;
-    mgdl += demoSlotNoise(seed, ymd, slotIndex, 30);
+    mgdl += profile.stepsGlucoseShift + profile.weekendGlucoseLift;
+    if (profile.hasLongSwim) {
+      mgdl += gaussBump(hourF, profile.swimPeakHour, 0.36, profile.swimBumpMgdl);
+    }
+    mgdl += state.dailyOffset * 1.05;
+    mgdl += demoSlotNoise(seed, ymd, slotIndex, 22);
   }
 
   return clamp(Math.round(mgdl), 65, 340);

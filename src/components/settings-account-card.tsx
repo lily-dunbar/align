@@ -68,13 +68,12 @@ export function SettingsAccountCard() {
 
   return (
     <section className="w-full rounded-2xl border border-align-border/90 bg-white/90 p-5 ring-1 ring-black/[0.03]">
-      <h2 className="text-lg font-semibold tracking-tight text-zinc-900">Account</h2>
-      <p className="mt-1 text-sm text-zinc-600">
-        Sign out, download your stored data, or remove your account entirely.
-      </p>
+      <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
+        Account
+      </h2>
 
-      <ul className="mt-5 space-y-4">
-        <li className="flex flex-col gap-2 border-b border-zinc-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+      <ul className="mt-4 divide-y divide-zinc-100 rounded-xl border border-zinc-100 bg-zinc-50/50">
+        <li className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <p className="text-sm font-medium text-zinc-900">Sign out</p>
             <p className="mt-0.5 text-xs text-zinc-500">End this session on this device.</p>
@@ -82,14 +81,14 @@ export function SettingsAccountCard() {
           <SignOutButton redirectUrl="/">
             <button
               type="button"
-              className="shrink-0 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50"
+              className="shrink-0 rounded-full border border-zinc-300 bg-white px-3.5 py-1.5 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50"
             >
               Sign out
             </button>
           </SignOutButton>
         </li>
 
-        <li className="flex flex-col gap-2 border-b border-zinc-100 pb-4 sm:flex-row sm:items-center sm:justify-between">
+        <li className="flex flex-col gap-2 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <p className="text-sm font-medium text-zinc-900">Export data</p>
             <p className="mt-0.5 text-xs text-zinc-500">
@@ -99,7 +98,7 @@ export function SettingsAccountCard() {
           </div>
           <button
             type="button"
-            className="shrink-0 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50 disabled:opacity-50"
+              className="inline-flex min-w-[7.75rem] shrink-0 items-center justify-center rounded-full border border-zinc-300 bg-white px-3.5 py-1.5 text-sm font-medium text-zinc-900 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={exportBusy}
             onClick={() => void exportData()}
           >
@@ -112,7 +111,7 @@ export function SettingsAccountCard() {
           </p>
         ) : null}
 
-        <li className="flex flex-col gap-3 pt-1">
+        <li className="flex flex-col gap-3 px-4 py-3.5">
           <div className="min-w-0">
             <p className="text-sm font-medium text-zinc-900">Delete account</p>
             <p className="mt-0.5 text-xs text-zinc-500">
@@ -136,7 +135,7 @@ export function SettingsAccountCard() {
           </label>
           <button
             type="button"
-            className="self-start rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-40"
+            className="inline-flex min-w-[7.75rem] items-center justify-center self-start rounded-full bg-red-600 px-3.5 py-1.5 text-sm font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"
             disabled={deleteBusy || deletePhrase !== DELETE_CONFIRM_PHRASE}
             onClick={() => void deleteAccount()}
           >

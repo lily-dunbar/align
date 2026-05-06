@@ -88,12 +88,42 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(demoPayload);
   }
 
-  let glucose: Awaited<ReturnType<typeof db.query.glucoseReadings.findMany>> = [];
-  let steps: Awaited<ReturnType<typeof db.query.hourlySteps.findMany>> = [];
-  let workouts: Awaited<ReturnType<typeof db.query.manualWorkouts.findMany>> = [];
-  let food: Awaited<ReturnType<typeof db.query.foodEntries.findMany>> = [];
-  let sleep: Awaited<ReturnType<typeof db.query.sleepWindows.findMany>> = [];
-  let stravaActivities: Awaited<ReturnType<typeof db.query.activities.findMany>> = [];
+  let glucose: Array<{ observedAt: Date; mgdl: number }> = [];
+  let steps: Array<{
+    bucketStart: Date;
+    stepCount: number;
+    source: string;
+    receivedAt: Date;
+  }> = [];
+  let workouts: Array<{
+    id: string;
+    startedAt: Date;
+    endedAt: Date | null;
+    durationMin: number | null;
+    workoutType: string;
+  }> = [];
+  let food: Array<{
+    id: string;
+    eatenAt: Date;
+    title: string;
+    notes: string | null;
+    carbsGrams: number | null;
+    calories: number | null;
+  }> = [];
+  let sleep: Array<{
+    id: string;
+    sleepStart: Date;
+    sleepEnd: Date;
+  }> = [];
+  let stravaActivities: Array<{
+    id: string;
+    startAt: Date;
+    endAt: Date | null;
+    durationSec: number | null;
+    sportType: string | null;
+    activityType: string | null;
+    distanceMeters: number | null;
+  }> = [];
 
   try {
     [glucose, steps, workouts, food, sleep, stravaActivities] = await Promise.all([

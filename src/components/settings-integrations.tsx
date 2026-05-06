@@ -55,10 +55,13 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
   const [stepsClientHints, setStepsClientHints] = useState<{
     browserOrigin: string | null;
     ingestOriginMismatch: boolean;
-  }>({ browserOrigin: null, ingestOriginMismatch: false });
+    showLocalFilePull: boolean;
+  }>({ browserOrigin: null, ingestOriginMismatch: false, showLocalFilePull: false });
 
   useEffect(() => {
     const origin = readBrowserOrigin() || null;
+    const host = window.location.hostname;
+    const showLocalFilePull = host === "localhost" || host === "127.0.0.1";
     let ingestOriginMismatch = false;
     const ingestUrl = stepsIngest?.ingestUrl;
     if (ingestUrl) {
@@ -66,7 +69,6 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
         const ingest = new URL(ingestUrl);
         const ingestLocal =
           ingest.hostname === "localhost" || ingest.hostname === "127.0.0.1";
-        const host = window.location.hostname;
         const onPublicHttps =
           window.location.protocol === "https:" &&
           host !== "localhost" &&
@@ -78,26 +80,37 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
     }
     // Client-only: window + ingest URL for Shortcuts panel hints (avoids SSR/hydration fights).
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional after mount / when ingest loads
-    setStepsClientHints({ browserOrigin: origin, ingestOriginMismatch });
+    setStepsClientHints({
+      browserOrigin: origin,
+      ingestOriginMismatch,
+      showLocalFilePull,
+    });
   }, [stepsIngest?.ingestUrl]);
 
-  const loadStepsIngestInfo = useCallback(async () => {
+  /** Loads the personal ingest URL from the API (same JSON as Shortcuts should use as the POST base). */
+  const fetchStepsIngestInfo = useCallback(async (): Promise<StepsIngestInfo | null> => {
     if (!initial.steps.connected) {
       setStepsIngest(null);
-      return;
+      return null;
     }
+    const resp = await fetch("/api/ingest/steps/token", {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = (await resp.json()) as StepsIngestInfo & { error?: string };
+    if (!resp.ok) throw new Error(json.error ?? "Could not load ingest URL");
+    const info: StepsIngestInfo = { ingestUrl: json.ingestUrl, notes: json.notes ?? [] };
+    setStepsIngest(info);
+    return info;
+  }, [initial.steps.connected]);
+
+  const loadStepsIngestInfo = useCallback(async () => {
     try {
-      const resp = await fetch("/api/ingest/steps/token", {
-        method: "GET",
-        credentials: "include",
-      });
-      const json = (await resp.json()) as StepsIngestInfo & { error?: string };
-      if (!resp.ok) throw new Error(json.error ?? "Could not load ingest URL");
-      setStepsIngest({ ingestUrl: json.ingestUrl, notes: json.notes ?? [] });
+      await fetchStepsIngestInfo();
     } catch {
       setStepsIngest(null);
     }
-  }, [initial.steps.connected]);
+  }, [fetchStepsIngestInfo]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -281,6 +294,20 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
       router.refresh();
     } catch (e) {
       setNotice(e instanceof Error ? e.message : "Shortcuts file sync failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function refreshStepsIngestUrl() {
+    setBusy("refresh-steps-url");
+    setNotice(null);
+    try {
+      await fetchStepsIngestInfo();
+      setNotice("Loaded your personal ingest URL from the server.");
+      router.refresh();
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Could not load ingest URL");
     } finally {
       setBusy(null);
     }
@@ -510,26 +537,38 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 >
                   {busy === "connect-steps" ? "Connecting…" : "Connect"}
                 </button>
-              ) : null}
-              <button
-                type="button"
-                title="Reads SHORTCUTS_STEPS_FILE_PATH from the machine running this app (your Mac with npm run dev). On Vercel, use Apple Steps → Set up and POST from Shortcuts instead—not this button."
-                className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
-                disabled={busy !== null}
-                onClick={() => void syncShortcutsIcloudFile()}
-              >
-                {busy === "sync-shortcuts-file" ? "Syncing…" : "Sync"}
-              </button>
-              {initial.steps.connected ? (
-                <button
-                  type="button"
-                  className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-700 transition hover:bg-red-50 disabled:opacity-50"
-                  disabled={busy !== null}
-                  onClick={() => void disconnect("steps")}
-                >
-                  Disconnect
-                </button>
-              ) : null}
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    title="Loads your latest personal URL from GET /api/ingest/steps/token (same link Shortcuts uses for POST)."
+                    className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
+                    disabled={busy !== null}
+                    onClick={() => void refreshStepsIngestUrl()}
+                  >
+                    {busy === "refresh-steps-url" ? "Loading…" : "Refresh URL"}
+                  </button>
+                  {stepsClientHints.showLocalFilePull ? (
+                    <button
+                      type="button"
+                      title="Reads SHORTCUTS_STEPS_FILE_PATH on the machine running this app (local dev)."
+                      className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm transition hover:bg-zinc-50 disabled:opacity-50"
+                      disabled={busy !== null}
+                      onClick={() => void syncShortcutsIcloudFile()}
+                    >
+                      {busy === "sync-shortcuts-file" ? "Syncing…" : "Pull local file"}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                    disabled={busy !== null}
+                    onClick={() => void disconnect("steps")}
+                  >
+                    Disconnect
+                  </button>
+                </>
+              )}
             </div>
           </div>
           {initial.steps.connected && stepsIngest ? (
@@ -608,15 +647,33 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                     </code>
                     <button
                       type="button"
-                      className="shrink-0 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+                      className="shrink-0 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 hover:bg-zinc-50 disabled:opacity-50"
+                      disabled={busy !== null}
+                      title="Fetches the latest URL from the server, then copies it"
                       onClick={() => {
-                        void navigator.clipboard.writeText(stepsIngest.ingestUrl).then(() => {
-                          setCopyFlash(true);
-                          window.setTimeout(() => setCopyFlash(false), 2000);
-                        });
+                        void (async () => {
+                          setBusy("copy-ingest-url");
+                          setNotice(null);
+                          try {
+                            const info = await fetchStepsIngestInfo();
+                            if (!info?.ingestUrl) return;
+                            await navigator.clipboard.writeText(info.ingestUrl);
+                            setCopyFlash(true);
+                            window.setTimeout(() => setCopyFlash(false), 2000);
+                            router.refresh();
+                          } catch {
+                            setNotice("Could not load the latest URL. Try Refresh URL, then copy again.");
+                          } finally {
+                            setBusy(null);
+                          }
+                        })();
                       }}
                     >
-                      {copyFlash ? "Copied" : "Copy URL"}
+                      {busy === "copy-ingest-url"
+                        ? "Loading…"
+                        : copyFlash
+                          ? "Copied"
+                          : "Copy URL"}
                     </button>
                   </div>
                   <p className="text-zinc-600">

@@ -8,6 +8,7 @@ import { buildDemoPatternWindowSummaries } from "@/lib/demo/build-demo-window-su
 import { isDemoDataActive } from "@/lib/demo/is-demo-data-active";
 import { db } from "@/db";
 import { glucoseReadings, hourlySteps } from "@/db/schema";
+import { mergeHourlyStepsPreferShortcutsFile } from "@/lib/merge-hourly-steps-sources";
 import type { PatternWindow } from "@/lib/patterns/types";
 import { rollingRangeUtc } from "@/lib/patterns/window";
 import { calculateTir, type GlucosePoint } from "@/lib/tir";
@@ -53,7 +54,8 @@ async function aggregatePeriod(
         gte(hourlySteps.bucketStart, startUtc),
         lt(hourlySteps.bucketStart, endUtcExclusive),
       ),
-      columns: { stepCount: true },
+      orderBy: [asc(hourlySteps.bucketStart)],
+      columns: { bucketStart: true, stepCount: true, source: true, receivedAt: true },
     }),
   ]);
 
@@ -74,7 +76,8 @@ async function aggregatePeriod(
       tir.totalPoints > 0 ? tir.inRangePercent : null;
   }
 
-  const totalSteps = stepRows.reduce((sum, r) => sum + r.stepCount, 0);
+  const stepsMerged = mergeHourlyStepsPreferShortcutsFile(stepRows);
+  const totalSteps = stepsMerged.reduce((sum, r) => sum + r.stepCount, 0);
   const avgStepsPerDay =
     labelDays > 0 ? Math.round(totalSteps / labelDays) : 0;
 

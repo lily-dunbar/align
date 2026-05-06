@@ -22,6 +22,7 @@ import type {
   TemporalStats,
 } from "@/lib/patterns/types";
 import { windowLabelDays } from "@/lib/patterns/window";
+import { mergeHourlyStepsPreferShortcutsFile } from "@/lib/merge-hourly-steps-sources";
 import { calculateTir, type GlucosePoint } from "@/lib/tir";
 import type { UserPreferences } from "@/lib/user-display-preferences";
 
@@ -154,7 +155,12 @@ export async function loadPatternFeatureContext(
         lt(hourlySteps.bucketStart, endUtcExclusive),
       ),
       orderBy: [asc(hourlySteps.bucketStart)],
-      columns: { bucketStart: true, stepCount: true },
+      columns: {
+        bucketStart: true,
+        stepCount: true,
+        source: true,
+        receivedAt: true,
+      },
     }),
     db.query.manualWorkouts.findMany({
       where: and(
@@ -186,6 +192,8 @@ export async function loadPatternFeatureContext(
       },
     }),
   ]);
+
+  const stepsMerged = mergeHourlyStepsPreferShortcutsFile(stepRows);
 
   const glucosePoints: GlucosePoint[] = glucoseRows.map((r) => ({
     observedAt: r.observedAt,
@@ -304,7 +312,7 @@ export async function loadPatternFeatureContext(
   };
 
   const stepsByDay = new Map<string, number>();
-  for (const row of stepRows) {
+  for (const row of stepsMerged) {
     const ymd = formatYmdInZone(row.bucketStart, timeZone);
     stepsByDay.set(ymd, (stepsByDay.get(ymd) ?? 0) + row.stepCount);
   }
@@ -515,7 +523,7 @@ export async function loadPatternFeatureContext(
     daysLowStepBucket,
     avgDailySteps,
     stepsGoalPerDay: prefs.targetStepsPerDay,
-    hasHourlyStepsData: stepRows.length > 0,
+    hasHourlyStepsData: stepsMerged.length > 0,
     stravaWorkoutCount: stravaList.length,
     manualWorkoutCount: manualList.length,
     activeDayStepsThreshold: ACTIVE_DAY_STEPS_THRESHOLD,
@@ -548,7 +556,7 @@ export async function loadPatternFeatureContext(
 
   const dataCoverage = {
     glucoseReadingsCount: glucoseRows.length,
-    hourlyStepBucketsCount: stepRows.length,
+    hourlyStepBucketsCount: stepsMerged.length,
     manualWorkoutsCount: manualList.length,
     stravaActivitiesCount: stravaList.length,
     analysisHint:

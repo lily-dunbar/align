@@ -255,6 +255,16 @@ export async function POST(
       );
     }
     const samples = parseSamples(payload);
+    if (samples.length === 0) {
+      return NextResponse.json(
+        {
+          error: "No step samples in body",
+          hint:
+            "Send one object { \"timestamp\": \"…\", \"steps\": 123 } or an array of those objects, or { \"samples\": [ … ] }. An empty array or empty samples list is not stored.",
+        },
+        { status: 400 },
+      );
+    }
 
     await db
       .insert(user)

@@ -1,4 +1,4 @@
-import { and, count, desc, eq, sum } from "drizzle-orm";
+import { and, count, desc, eq } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -17,8 +17,6 @@ import {
   activities,
   dexcomTokens,
   glucoseReadings,
-  hourlySteps,
-  stepIngestTokens,
   stravaTokens,
   userDisplayPreferences,
 } from "@/db/schema";
@@ -27,6 +25,9 @@ import { needsOnboarding } from "@/lib/onboarding";
 import { getUserPreferences } from "@/lib/user-display-preferences";
 import { DEXCOM_SHARE_UI_HIDDEN_COOKIE } from "@/lib/dexcom/share-ui-cookie";
 import { isPydexcomShareConfigured } from "@/lib/dexcom/share-sync";
+import { getStepsIntegrationSnapshot } from "@/lib/settings/steps-snapshot";
+
+export const dynamic = "force-dynamic";
 
 function readParam(
   params: Record<string, string | string[] | undefined>,
@@ -62,25 +63,18 @@ export default async function SettingsPage({
     cookieStore.get(DEXCOM_SHARE_UI_HIDDEN_COOKIE)?.value === userId;
   let dexcomRow: { userId: string } | undefined;
   let stravaRow: { userId: string } | undefined;
-  let stepTok: { token: string } | undefined;
   let lastDexcomAt: string | null = null;
   let lastStravaAt: string | null = null;
-  let lastStepsAt: string | null = null;
-  let lastStepsStored: {
-    bucketStartIso: string;
-    stepCount: number;
-    source: string;
-    receivedAtIso: string;
-  } | null = null;
-  let recentStepRows: Array<{
-    bucketStart: Date;
-    stepCount: number;
-    source: string;
-    receivedAt: Date;
-  }> = [];
   let dexcomReadingCount = 0;
   let stravaActivityCount = 0;
-  let stepsTotalCount = 0;
+  const emptySteps: IntegrationSnapshot["steps"] = {
+    connected: false,
+    lastIngestAt: null,
+    stepsTotalStored: 0,
+    lastStored: null,
+    recentRows: [],
+  };
+  let stepsSnapshot: IntegrationSnapshot["steps"] = emptySteps;
 
   try {
     dexcomRow = await db.query.dexcomTokens.findFirst({
@@ -90,10 +84,6 @@ export default async function SettingsPage({
     stravaRow = await db.query.stravaTokens.findFirst({
       where: eq(stravaTokens.userId, userId),
       columns: { userId: true },
-    });
-    stepTok = await db.query.stepIngestTokens.findFirst({
-      where: eq(stepIngestTokens.userId, userId),
-      columns: { token: true },
     });
 
     const lastDexcomGlucoseRow =
@@ -119,37 +109,7 @@ export default async function SettingsPage({
         )?.updatedAt.toISOString() ?? null
       : null;
 
-    const lastStepsRow = await db.query.hourlySteps.findFirst({
-      where: eq(hourlySteps.userId, userId),
-      orderBy: [desc(hourlySteps.receivedAt)],
-      columns: {
-        receivedAt: true,
-        bucketStart: true,
-        stepCount: true,
-        source: true,
-      },
-    });
-    lastStepsAt = lastStepsRow?.receivedAt.toISOString() ?? null;
-    lastStepsStored =
-      lastStepsRow != null
-        ? {
-            bucketStartIso: lastStepsRow.bucketStart.toISOString(),
-            stepCount: lastStepsRow.stepCount,
-            source: lastStepsRow.source,
-            receivedAtIso: lastStepsRow.receivedAt.toISOString(),
-          }
-        : null;
-    recentStepRows = await db.query.hourlySteps.findMany({
-      where: eq(hourlySteps.userId, userId),
-      orderBy: [desc(hourlySteps.receivedAt)],
-      limit: 96,
-      columns: {
-        bucketStart: true,
-        stepCount: true,
-        source: true,
-        receivedAt: true,
-      },
-    });
+    stepsSnapshot = await getStepsIntegrationSnapshot(userId);
 
     const [dexcomReadingsAgg] = await db
       .select({ n: count() })
@@ -163,14 +123,8 @@ export default async function SettingsPage({
       .from(activities)
       .where(and(eq(activities.userId, userId), eq(activities.provider, "strava")));
 
-    const [stepsSumAgg] = await db
-      .select({ total: sum(hourlySteps.stepCount) })
-      .from(hourlySteps)
-      .where(eq(hourlySteps.userId, userId));
-
     dexcomReadingCount = Number(dexcomReadingsAgg?.n ?? 0);
     stravaActivityCount = Number(stravaActivityAgg?.n ?? 0);
-    stepsTotalCount = Number(stepsSumAgg?.total ?? 0);
   } catch (error) {
     console.warn("Settings data unavailable while DB is overloaded.", error);
   }
@@ -208,18 +162,7 @@ export default async function SettingsPage({
       lastSyncAt: lastStravaAt,
       activityCount: stravaActivityCount,
     },
-    steps: {
-      connected: !!stepTok,
-      lastIngestAt: lastStepsAt,
-      stepsTotalStored: stepsTotalCount,
-      lastStored: lastStepsStored,
-      recentRows: recentStepRows.map((r) => ({
-        bucketStartIso: r.bucketStart.toISOString(),
-        stepCount: r.stepCount,
-        source: r.source,
-        receivedAtIso: r.receivedAt.toISOString(),
-      })),
-    },
+    steps: stepsSnapshot,
   };
 
   return (

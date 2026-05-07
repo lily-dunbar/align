@@ -12,6 +12,14 @@ type StepSampleInput = {
   steps: number;
 };
 
+function debugLogStepsIngestPayload(raw: string, tokenHint: string) {
+  console.debug("[steps-ingest] POST payload", {
+    tokenSuffix: tokenHint.slice(-6),
+    utf8Bytes: new TextEncoder().encode(raw).length,
+    body: raw,
+  });
+}
+
 function parseStepsValue(raw: unknown, label: string): number {
   if (typeof raw === "number" && Number.isFinite(raw)) {
     return Math.max(0, Math.round(raw));
@@ -249,6 +257,10 @@ export async function POST(
   context: { params: Promise<{ stepIngestToken: string }> },
 ) {
   try {
+    const { stepIngestToken } = await context.params;
+    const rawBody = await request.text();
+    debugLogStepsIngestPayload(rawBody, stepIngestToken);
+
     if (!isStepsIngestAuthorized(request)) {
       return NextResponse.json(
         {
@@ -260,7 +272,6 @@ export async function POST(
       );
     }
 
-    const { stepIngestToken } = await context.params;
     let userId = await getUserIdForStepIngestToken(stepIngestToken);
 
     if (!userId) {
@@ -290,7 +301,7 @@ export async function POST(
 
     let payload: unknown;
     try {
-      payload = await request.json();
+      payload = rawBody.trim() === "" ? undefined : JSON.parse(rawBody);
     } catch {
       return NextResponse.json(
         {

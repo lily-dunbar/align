@@ -52,6 +52,8 @@ function stepsSourceLabel(source: string) {
       return "Shortcut POST";
     case "shortcuts_file":
       return "Shortcuts file sync";
+    case "filled_zero":
+      return "No ingest (chart gap)";
     case "demo_preview":
       return "Demo preview";
     default:
@@ -102,10 +104,18 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  /** Fresh DB read after Pull / local file sync — avoids stale RSC payload from router.refresh() alone. */
+  const [stepsLive, setStepsLive] = useState<IntegrationSnapshot["steps"] | null>(null);
+  const stepsDisplay = stepsLive ?? initial.steps;
   const [openOverflow, setOpenOverflow] = useState<"dexcom" | "strava" | "steps" | null>(null);
   const [stepsIngest, setStepsIngest] = useState<StepsIngestInfo | null>(null);
   const [copyFlash, setCopyFlash] = useState(false);
   const [stepsIngestModalOpen, setStepsIngestModalOpen] = useState(false);
+  /** Matches `/api/day` streams.hourlySteps for today (local TZ) — same as the home Daily chart. */
+  const [todayChartBuckets, setTodayChartBuckets] = useState<
+    Array<{ bucketStart: string; stepCount: number; source: string }>
+  | null>(null);
+  const [todayChartBucketsError, setTodayChartBucketsError] = useState<string | null>(null);
   const [stepsSetupOpen, setStepsSetupOpen] = useState(false);
   const stepsSetupPanelId = useId();
   const [stepsClientHints, setStepsClientHints] = useState<{
@@ -114,10 +124,10 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
   }>({ browserOrigin: null, ingestOriginMismatch: false });
   /** After mount: whether Settings was opened on localhost (file sync) vs hosted (copy ingest URL). */
   const [browserIsLocalDev, setBrowserIsLocalDev] = useState<boolean | null>(null);
-  const mostRecentIngest = initial.steps.recentRows[0] ?? null;
+  const mostRecentIngest = stepsDisplay.recentRows[0] ?? null;
   const chartCoverageRows = useMemo(() => {
     const byBucket = new Map(
-      initial.steps.recentRows.map((r) => [r.bucketStartIso, r] as const),
+      stepsDisplay.recentRows.map((r) => [r.bucketStartIso, r] as const),
     );
     const now = new Date();
     now.setUTCMinutes(0, 0, 0);
@@ -138,7 +148,63 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
       });
     }
     return rows;
-  }, [initial.steps.recentRows]);
+  }, [stepsDisplay.recentRows]);
+
+  /** Drop client overlay once the server RSC payload catches up with a newer last-write time. */
+  useEffect(() => {
+    setStepsLive(null);
+  }, [initial.steps.lastIngestAt]);
+
+  useEffect(() => {
+    if (!stepsIngestModalOpen) {
+      setTodayChartBuckets(null);
+      setTodayChartBucketsError(null);
+      return;
+    }
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    let cancelled = false;
+    setTodayChartBucketsError(null);
+    void fetch(`/api/day?timeZone=${encodeURIComponent(tz)}`, {
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then(async (r) => {
+        const j = (await r.json()) as {
+          error?: string;
+          streams?: {
+            hourlySteps?: Array<{
+              bucketStart: string | Date;
+              stepCount: number;
+              source: string;
+            }>;
+          };
+        };
+        if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+        const hourly = j.streams?.hourlySteps ?? [];
+        const normalized = hourly.map((row) => ({
+          bucketStart:
+            typeof row.bucketStart === "string"
+              ? row.bucketStart
+              : new Date(row.bucketStart).toISOString(),
+          stepCount: row.stepCount,
+          source: row.source,
+        }));
+        if (!cancelled) {
+          setTodayChartBuckets(normalized.slice().reverse());
+        }
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) {
+          setTodayChartBuckets(null);
+          setTodayChartBucketsError(
+            e instanceof Error ? e.message : "Could not load chart buckets",
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [stepsIngestModalOpen]);
 
   function showSuccessToast(message: string) {
     setToast(message);
@@ -313,12 +379,28 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
     return h === "localhost" || h === "127.0.0.1";
   }
 
+  async function fetchStepsSnapshot(): Promise<IntegrationSnapshot["steps"]> {
+    const resp = await fetch("/api/settings/steps-snapshot", {
+      credentials: "include",
+      cache: "no-store",
+    });
+    const json = (await resp.json()) as {
+      steps?: IntegrationSnapshot["steps"];
+      error?: string;
+    };
+    if (!resp.ok) throw new Error(json.error ?? "Could not load steps");
+    if (!json.steps) throw new Error("Could not load steps");
+    return json.steps;
+  }
+
   /** Re-fetch Settings data so charts and stats reflect your most recent Shortcut POST to the server. */
   async function pullSteps() {
     setBusy("pull-steps");
     setNotice(null);
     setOpenOverflow(null);
     try {
+      const steps = await fetchStepsSnapshot();
+      setStepsLive(steps);
       await fetchStepsIngestInfo();
       router.refresh();
       showSuccessToast("Reloaded step data from your latest Shortcut ingest.");
@@ -374,6 +456,11 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
         `Local sync done: +${json.inserted ?? 0} new, ${json.updated ?? 0} updated.`,
       );
       await loadStepsIngestInfo();
+      try {
+        setStepsLive(await fetchStepsSnapshot());
+      } catch {
+        /* snapshot optional if DB busy */
+      }
       router.refresh();
     } catch (e) {
       setNotice(e instanceof Error ? e.message : "Local sync failed");
@@ -671,19 +758,19 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
             <div className="min-w-0">
               <p className="font-medium text-zinc-900">Apple Steps</p>
               <p className="mt-1 text-xs text-zinc-500">
-                {initial.steps.connected ? (
+                {stepsDisplay.connected ? (
                   <>
                     Personal Shortcut POST URL is active — each user has a different path after{" "}
                     <code className="rounded bg-zinc-100 px-1 text-[10px]">/api/ingest/steps/</code>.
-                    DB: {initial.steps.stepsTotalStored.toLocaleString()} step-count sum · Last write:{" "}
-                    {formatWhen(initial.steps.lastIngestAt)}.
-                    {initial.steps.lastStored ? (
+                    DB: {stepsDisplay.stepsTotalStored.toLocaleString()} step-count sum · Last write:{" "}
+                    {formatWhen(stepsDisplay.lastIngestAt)}.
+                    {stepsDisplay.lastStored ? (
                       <span className="mt-2 block text-zinc-600">
                         <span className="font-medium text-zinc-800">Latest stored hour:</span>{" "}
-                        {initial.steps.lastStored.stepCount.toLocaleString()} steps · UTC bucket start{" "}
-                        {formatWhen(initial.steps.lastStored.bucketStartIso)} ·{" "}
-                        {stepsSourceLabel(initial.steps.lastStored.source)} · received{" "}
-                        {formatWhen(initial.steps.lastStored.receivedAtIso)}
+                        {stepsDisplay.lastStored.stepCount.toLocaleString()} steps · UTC bucket start{" "}
+                        {formatWhen(stepsDisplay.lastStored.bucketStartIso)} ·{" "}
+                        {stepsSourceLabel(stepsDisplay.lastStored.source)} · received{" "}
+                        {formatWhen(stepsDisplay.lastStored.receivedAtIso)}
                       </span>
                     ) : (
                       <span className="mt-2 block text-amber-800/90">
@@ -701,7 +788,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
               </p>
             </div>
             <div className="relative flex shrink-0 items-start justify-end gap-2">
-              {!initial.steps.connected ? (
+              {!stepsDisplay.connected ? (
                 <button
                   type="button"
                   className={primaryButtonClass}
@@ -781,7 +868,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
               ) : null}
             </div>
           </div>
-          {initial.steps.connected && stepsIngest ? (
+          {stepsDisplay.connected && stepsIngest ? (
             <div className="mt-3 w-full min-w-0 border-t border-align-border-soft pt-3 text-xs text-zinc-700">
               <button
                 type="button"
@@ -935,39 +1022,77 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
               </button>
             </div>
             <div className="max-h-[65vh] overflow-auto p-4 text-xs text-zinc-700">
-              {initial.steps.recentRows.length === 0 ? (
-                <p>No ingest rows yet.</p>
-              ) : (
-                <div className="space-y-3">
-                  <div className="rounded-md border border-zinc-200 bg-zinc-50/70 p-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-700">
-                      Last 24h chart buckets
-                    </p>
-                    <p className="mt-1 text-[11px] text-zinc-600">
-                      Each row is one hourly bucket used by the Daily chart. Missing rows explain gaps.
-                    </p>
-                    <div className="mt-2 space-y-1.5">
-                      {chartCoverageRows.map((row) => (
-                        <div
-                          key={row.bucketStartIso}
-                          className={`flex items-center justify-between rounded px-2 py-1 ${
-                            row.hasData ? "bg-white ring-1 ring-zinc-200/80" : "bg-zinc-100/80"
-                          }`}
-                        >
-                          <span className="font-medium">
-                            {formatWhen(row.bucketStartIso)}
-                          </span>
-                          <span className={row.hasData ? "text-zinc-800" : "text-zinc-500"}>
-                            {row.hasData
-                              ? `${row.stepCount?.toLocaleString() ?? 0} steps · ${stepsSourceLabel(
-                                  row.source ?? "",
-                                )}`
-                              : "No data"}
-                          </span>
+              <div className="space-y-3">
+                {stepsDisplay.recentRows.length === 0 ? (
+                  <p className="rounded-md border border-amber-200 bg-amber-50/80 px-3 py-2 text-amber-950">
+                    No hourly rows are stored yet — run your Shortcut or Local Sync first.
+                  </p>
+                ) : null}
+                <div className="rounded-md border border-zinc-200 bg-zinc-50/70 p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-700">
+                    Today&apos;s hourly buckets (Daily chart)
+                  </p>
+                  <p className="mt-1 text-[11px] text-zinc-600">
+                    Uses your calendar day and timezone ({Intl.DateTimeFormat().resolvedOptions().timeZone}), merges
+                    Shortcut POST vs file sync when both write the same hour (higher step count wins), then fills empty
+                    hours so the chart aligns with this list.
+                  </p>
+                  <div className="mt-2 space-y-1.5">
+                    {todayChartBucketsError ? (
+                      <>
+                        <p className="text-red-700">{todayChartBucketsError}</p>
+                        <p className="text-[11px] text-zinc-500">
+                          Fallback: rolling last 24 UTC hours from recent ingests (may not match the Daily chart).
+                        </p>
+                        <div className="space-y-1.5">
+                          {chartCoverageRows.map((row) => (
+                            <div
+                              key={row.bucketStartIso}
+                              className={`flex items-center justify-between rounded px-2 py-1 ${
+                                row.hasData ? "bg-white ring-1 ring-zinc-200/80" : "bg-zinc-100/80"
+                              }`}
+                            >
+                              <span className="font-medium">{formatWhen(row.bucketStartIso)}</span>
+                              <span className={row.hasData ? "text-zinc-800" : "text-zinc-500"}>
+                                {row.hasData
+                                  ? `${row.stepCount?.toLocaleString() ?? 0} steps · ${stepsSourceLabel(
+                                      row.source ?? "",
+                                    )}`
+                                  : "No data"}
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      </>
+                    ) : todayChartBuckets !== null ? (
+                      todayChartBuckets.length > 0 ? (
+                        todayChartBuckets.map((row) => {
+                          const isGap = row.source === "filled_zero";
+                          return (
+                            <div
+                              key={row.bucketStart}
+                              className={`flex items-center justify-between rounded px-2 py-1 ${
+                                isGap ? "bg-zinc-100/80" : "bg-white ring-1 ring-zinc-200/80"
+                              }`}
+                            >
+                              <span className="font-medium">{formatWhen(row.bucketStart)}</span>
+                              <span className={isGap ? "text-zinc-500" : "text-zinc-800"}>
+                                {isGap
+                                  ? "No ingest yet"
+                                  : `${row.stepCount.toLocaleString()} steps · ${stepsSourceLabel(row.source)}`}
+                              </span>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <p className="text-zinc-500">No hourly buckets returned for today.</p>
+                      )
+                    ) : (
+                      <p className="text-zinc-500">Loading chart buckets…</p>
+                    )}
                   </div>
+                </div>
+                {mostRecentIngest ? (
                   <div className="rounded-md border border-emerald-200 bg-emerald-50/70 p-3">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
                       Most recent ingest
@@ -975,34 +1100,39 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                     <div className="mt-1.5 grid grid-cols-1 gap-1 text-zinc-800 sm:grid-cols-2">
                       <p>
                         <span className="font-medium">Date:</span>{" "}
-                        {formatDateOnly(mostRecentIngest?.receivedAtIso ?? null)}
+                        {formatDateOnly(mostRecentIngest.receivedAtIso)}
                       </p>
                       <p>
                         <span className="font-medium">Timestamp:</span>{" "}
-                        {formatTimeOnly(mostRecentIngest?.receivedAtIso ?? null)}
+                        {formatTimeOnly(mostRecentIngest.receivedAtIso)}
                       </p>
                       <p>
                         <span className="font-medium">Step count:</span>{" "}
-                        {mostRecentIngest?.stepCount?.toLocaleString() ?? "—"}
+                        {mostRecentIngest.stepCount.toLocaleString()}
                       </p>
                       <p>
                         <span className="font-medium">Source:</span>{" "}
-                        {mostRecentIngest ? stepsSourceLabel(mostRecentIngest.source) : "—"}
+                        {stepsSourceLabel(mostRecentIngest.source)}
                       </p>
                     </div>
                   </div>
-                  {initial.steps.recentRows.map((row, idx) => (
-                    <div key={`${row.receivedAtIso}-${idx}`} className="rounded-md border border-zinc-200 p-2">
-                      <p>
-                        <span className="font-medium text-zinc-900">{row.stepCount.toLocaleString()}</span> steps
-                      </p>
-                      <p>Bucket start: {formatWhen(row.bucketStartIso)}</p>
-                      <p>Source: {stepsSourceLabel(row.source)}</p>
-                      <p>Received: {formatWhen(row.receivedAtIso)}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
+                ) : null}
+                {stepsDisplay.recentRows.length > 0 ? (
+                  <>
+                    <p className="font-semibold text-zinc-900">Raw ingest rows (newest first)</p>
+                    {stepsDisplay.recentRows.map((row, idx) => (
+                      <div key={`${row.receivedAtIso}-${idx}`} className="rounded-md border border-zinc-200 p-2">
+                        <p>
+                          <span className="font-medium text-zinc-900">{row.stepCount.toLocaleString()}</span> steps
+                        </p>
+                        <p>Bucket start: {formatWhen(row.bucketStartIso)}</p>
+                        <p>Source: {stepsSourceLabel(row.source)}</p>
+                        <p>Received: {formatWhen(row.receivedAtIso)}</p>
+                      </div>
+                    ))}
+                  </>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>

@@ -45,6 +45,21 @@ body {
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
+.onboarding-gradient-bg {
+  background: radial-gradient(
+    circle at 82% 12%,
+    #acb98a 0%,
+    #8baa90 18%,
+    #6a9aa1 38%,
+    #467f91 66%,
+    #275f6f 100%
+  ) fixed !important;
+}
+
+.onboarding-overscroll-lock {
+  overscroll-behavior: none;
+}
+
 @keyframes alignChartEnter {
   from {
     opacity: 0;

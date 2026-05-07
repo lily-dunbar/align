@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-type MetricVariant = "glucose" | "tir" | "steps" | "carbs";
+type MetricVariant = "glucose" | "tir" | "steps";
 
 const shells: Record<MetricVariant, string> = {
   glucose:
@@ -8,15 +8,12 @@ const shells: Record<MetricVariant, string> = {
   tir: "border-white/60 bg-align-card-tir ring-1 ring-black/[0.04] dark:border-white/5 dark:ring-white/10",
   steps:
     "border-white/60 bg-align-card-steps ring-1 ring-black/[0.04] dark:border-white/5 dark:ring-white/10",
-  carbs:
-    "border-white/60 bg-amber-50/90 ring-1 ring-amber-200/60 dark:border-white/5 dark:ring-white/10",
 };
 
 const valueColors: Record<MetricVariant, string> = {
   glucose: "text-align-text-glucose",
   tir: "text-align-text-tir",
   steps: "text-align-text-steps",
-  carbs: "text-amber-900",
 };
 
 function MetricIcon({ variant }: { variant: MetricVariant }) {
@@ -38,19 +35,6 @@ function MetricIcon({ variant }: { variant: MetricVariant }) {
       <svg className={cls} viewBox="0 0 24 24" fill="none" aria-hidden>
         <circle cx={12} cy={12} r={9} stroke="currentColor" strokeWidth={1.25} />
         <circle cx={12} cy={12} r={3} fill="currentColor" />
-      </svg>
-    );
-  }
-  if (variant === "carbs") {
-    return (
-      <svg className={cls} viewBox="0 0 24 24" fill="none" aria-hidden>
-        <path
-          d="M6 18V12M10 18V8M14 18v-5M18 18v-9"
-          stroke="currentColor"
-          strokeWidth={1.35}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
       </svg>
     );
   }

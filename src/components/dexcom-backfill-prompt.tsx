@@ -6,12 +6,10 @@ import { useState } from "react";
 import { DAY_DATA_CHANGED_EVENT } from "@/lib/day-view-events";
 
 type Props = {
-  /** Share / pydexcom server path — 90-day backfill is limited vs OAuth. */
-  shareCredentialsMode: boolean;
   className?: string;
 };
 
-export function DexcomBackfillPrompt({ shareCredentialsMode, className }: Props) {
+export function DexcomBackfillPrompt({ className }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,40 +62,40 @@ export function DexcomBackfillPrompt({ shareCredentialsMode, className }: Props)
     }
   }
 
+  const cardShell =
+    "w-full rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] px-4 py-3 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]";
+
   return (
     <aside
-      className={`rounded-2xl border border-amber-200/90 bg-gradient-to-br from-amber-50/95 to-amber-100/40 p-4 ring-1 ring-amber-200/50 ${className ?? ""}`}
+      className={`${cardShell} ${className ?? ""}`}
       role="region"
       aria-label="Dexcom historical import"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 space-y-1">
-          <p className="text-sm font-semibold text-amber-950">Import your last 90 days of Dexcom data?</p>
-          <p className="text-xs leading-relaxed text-amber-950/85">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold tracking-tight text-zinc-900">
+            Import your last 90 days of Dexcom data?
+          </h3>
+          <p className="mt-1.5 text-xs leading-relaxed text-zinc-600">
             Run a one-time sync to backfill glucose in Align. Regular “Sync” afterward only pulls recent
-            readings.
-            {shareCredentialsMode ? (
-              <>
-                {" "}
-                <span className="font-medium">
-                  Note: Dexcom Share mode only receives roughly the last 24 hours per sync (Dexcom limit).
-                  Connect with Dexcom OAuth for a full 90-day import when available.
-                </span>
-              </>
-            ) : null}
+            readings.{" "}
+            <span className="font-medium text-zinc-700">
+              Note: Dexcom Share mode only receives roughly the last 24 hours per sync (Dexcom limit).
+              Connect with Dexcom OAuth for a full 90-day import when available.
+            </span>
           </p>
           {error ? (
-            <p className="text-xs font-medium text-red-800" role="alert">
+            <p className="mt-2 text-xs font-medium text-red-800" role="alert">
               {error}
             </p>
           ) : null}
         </div>
         <div className="flex shrink-0 flex-col gap-2 sm:items-end">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 sm:justify-end">
             <button
               type="button"
               disabled={busy}
-              className="rounded-lg bg-amber-900 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-amber-950 disabled:opacity-50"
+              className="rounded-full bg-[#0f6e68] px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#0c615c] disabled:opacity-50"
               onClick={() => void syncNinetyDays()}
             >
               {busy ? "Syncing…" : "Import 90 days"}
@@ -105,7 +103,7 @@ export function DexcomBackfillPrompt({ shareCredentialsMode, className }: Props)
             <button
               type="button"
               disabled={busy}
-              className="rounded-lg border border-amber-300/90 bg-white/90 px-3 py-1.5 text-xs font-medium text-amber-950 transition hover:bg-white disabled:opacity-50"
+              className="rounded-full border border-zinc-300/75 bg-white/75 px-3 py-1.5 text-xs font-medium text-zinc-700 transition hover:bg-white disabled:opacity-50"
               onClick={() => void dismissPrompt()}
             >
               Don&apos;t show again

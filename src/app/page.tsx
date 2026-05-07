@@ -70,7 +70,7 @@ export default async function Home({ searchParams }: HomeProps) {
       {userId ? (
         <>
           {showDexcomBackfill ? (
-            <DexcomBackfillPrompt shareCredentialsMode={dexcomShareMode} />
+            <DexcomBackfillPrompt />
           ) : null}
           <Suspense fallback={<DailyDashboardSkeleton />}>
             <HomeStepsAutoSync />

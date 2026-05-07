@@ -166,8 +166,7 @@ export function HomeGoalNotifications({ dateYmd }: Props) {
     <section className="w-full rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] px-4 py-3 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#4f8481]">Update</p>
-          <h3 className="mt-0.5 text-sm font-semibold tracking-tight text-zinc-900">{firstNotice.title}</h3>
+          <h3 className="text-sm font-semibold tracking-tight text-zinc-900">{firstNotice.title}</h3>
           <p className="mt-0.5 text-xs leading-relaxed text-zinc-600">{firstNotice.body}</p>
         </div>
         <button

@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { SignInButton, useAuth, useUser, UserButton } from "@clerk/nextjs";
 
 function UserMenuIcon() {
@@ -33,10 +34,15 @@ type AppHeaderProps = {
 };
 
 export function AppHeader({ devModeBanner = false }: AppHeaderProps) {
+  const pathname = usePathname();
   const { isSignedIn, isLoaded } = useAuth();
   const { user } = useUser();
   const initial = (user?.firstName?.trim().charAt(0) || user?.username?.trim().charAt(0) || "A")
     .toUpperCase();
+
+  if (pathname.startsWith("/onboarding")) {
+    return null;
+  }
 
   return (
     <header className="sticky top-0 z-40 border-b border-align-border/80 bg-white/85 backdrop-saturate-150 backdrop-blur-md supports-[backdrop-filter]:bg-white/70">

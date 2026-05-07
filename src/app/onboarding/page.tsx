@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { eq } from "drizzle-orm";
 
+import { OnboardingBodyGradient } from "@/components/onboarding-body-gradient";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { db } from "@/db";
 import { dexcomTokens, stepIngestTokens, stravaTokens } from "@/db/schema";
@@ -20,12 +21,20 @@ function OnboardingFallback() {
   );
 }
 
-export default async function OnboardingPage() {
+export default async function OnboardingPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { userId } = await auth();
   if (!userId) {
     redirect("/sign-in");
   }
-  if (!(await needsOnboarding(userId))) {
+  const params = (await searchParams) ?? {};
+  const previewRaw = params.preview;
+  const preview = Array.isArray(previewRaw) ? previewRaw[0] : previewRaw;
+  const isPreview = preview === "1" || preview === "true";
+  if (!isPreview && !(await needsOnboarding(userId))) {
     redirect("/");
   }
   const prefs = await getUserPreferences(userId);
@@ -64,6 +73,7 @@ export default async function OnboardingPage() {
 
   return (
     <main className="relative min-h-dvh overflow-hidden bg-[radial-gradient(circle_at_82%_12%,#acb98a_0%,#8baa90_18%,#6a9aa1_38%,#467f91_66%,#275f6f_100%)]">
+      <OnboardingBodyGradient />
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.06)_0%,rgba(255,255,255,0)_38%,rgba(8,32,39,0.1)_100%)]"

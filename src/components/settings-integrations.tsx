@@ -16,8 +16,8 @@ const secondaryButtonClass =
   "inline-flex min-w-[6.75rem] items-center justify-center rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-800 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50";
 const secondaryIconButtonClass =
   "inline-flex min-h-10 min-w-10 items-center justify-center rounded-full border border-zinc-200 bg-white px-2 py-1 text-sm leading-none text-zinc-800 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50";
-const syncButtonClass =
-  "inline-flex min-w-[5.5rem] items-center justify-center rounded-full bg-align-forest px-2.5 py-1 text-xs font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted disabled:cursor-not-allowed disabled:opacity-50";
+/** Same footprint as Connect (`primaryButtonClass`) — Dexcom/Strava Sync and Apple Steps Pull. */
+const syncButtonClass = primaryButtonClass;
 
 function formatWhen(iso: string | null) {
   if (!iso) return "—";
@@ -112,6 +112,8 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
     browserOrigin: string | null;
     ingestOriginMismatch: boolean;
   }>({ browserOrigin: null, ingestOriginMismatch: false });
+  /** After mount: whether Settings was opened on localhost (file sync) vs hosted (copy ingest URL). */
+  const [browserIsLocalDev, setBrowserIsLocalDev] = useState<boolean | null>(null);
   const mostRecentIngest = initial.steps.recentRows[0] ?? null;
   const chartCoverageRows = useMemo(() => {
     const byBucket = new Map(
@@ -142,6 +144,11 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
     setToast(message);
     window.setTimeout(() => setToast(null), 2200);
   }
+
+  useEffect(() => {
+    const h = window.location.hostname;
+    setBrowserIsLocalDev(h === "localhost" || h === "127.0.0.1");
+  }, []);
 
   useEffect(() => {
     const origin = readBrowserOrigin() || null;
@@ -300,11 +307,54 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
     }
   }
 
-  async function syncSteps() {
-    setBusy("sync-steps");
+  function isLocalhostBrowser(): boolean {
+    if (typeof window === "undefined") return false;
+    const h = window.location.hostname;
+    return h === "localhost" || h === "127.0.0.1";
+  }
+
+  /** Re-fetch Settings data so charts and stats reflect your most recent Shortcut POST to the server. */
+  async function pullSteps() {
+    setBusy("pull-steps");
     setNotice(null);
     setOpenOverflow(null);
     try {
+      await fetchStepsIngestInfo();
+      router.refresh();
+      showSuccessToast("Reloaded step data from your latest Shortcut ingest.");
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Could not reload steps");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * Dev: import from the Shortcuts file on this machine. Hosted: copy your personal POST URL
+   * (same as Copy URL in setup details).
+   */
+  async function localSyncSteps() {
+    setBusy("local-sync-steps");
+    setNotice(null);
+    setOpenOverflow(null);
+    try {
+      const info = await fetchStepsIngestInfo();
+      if (!info?.ingestUrl) {
+        throw new Error("Could not load your ingest URL. Try Connect, then again.");
+      }
+
+      // Hosted (Vercel, etc.): no filesystem — Shortcuts must POST to the personal URL; match "Copy URL".
+      if (!isLocalhostBrowser()) {
+        await navigator.clipboard.writeText(info.ingestUrl);
+        setCopyFlash(true);
+        window.setTimeout(() => setCopyFlash(false), 2000);
+        showSuccessToast(
+          "Copied your Shortcut POST URL. Run the Shortcut on your phone — the server can’t read iCloud files.",
+        );
+        router.refresh();
+        return;
+      }
+
       const resp = await fetch("/api/import/health-sync", {
         method: "POST",
         cache: "no-store",
@@ -318,15 +368,15 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
         error?: string;
       };
       if (!resp.ok || !json.ok) {
-        throw new Error(json.error ?? "Steps sync failed");
+        throw new Error(json.error ?? "Local sync failed");
       }
       showSuccessToast(
-        `Steps sync done: +${json.inserted ?? 0} new, ${json.updated ?? 0} updated.`,
+        `Local sync done: +${json.inserted ?? 0} new, ${json.updated ?? 0} updated.`,
       );
       await loadStepsIngestInfo();
       router.refresh();
     } catch (e) {
-      setNotice(e instanceof Error ? e.message : "Steps sync failed");
+      setNotice(e instanceof Error ? e.message : "Local sync failed");
     } finally {
       setBusy(null);
     }
@@ -666,9 +716,10 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                     type="button"
                     className={syncButtonClass}
                     disabled={busy !== null}
-                    onClick={() => void syncSteps()}
+                    title="Reload this page’s step counts from the server (after your Shortcut POSTs)"
+                    onClick={() => void pullSteps()}
                   >
-                    {busy === "sync-steps" ? "Syncing…" : "Sync"}
+                    {busy === "pull-steps" ? "Pulling…" : "Pull"}
                   </button>
                   <button
                     type="button"
@@ -685,11 +736,29 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
               {openOverflow === "steps" ? (
                 <div
                   role="menu"
-                  className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border border-zinc-200 bg-white p-1.5 shadow-lg"
+                  className="absolute right-0 top-full z-20 mt-1 min-w-[11rem] rounded-lg border border-zinc-200 bg-white p-1.5 shadow-lg"
                 >
                   <button
                     type="button"
                     className="min-h-10 w-full rounded-full px-2 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                    title={
+                      browserIsLocalDev === true
+                        ? "Import steps from the Shortcuts file on this machine"
+                        : browserIsLocalDev === false
+                          ? "Copy your personal Shortcut POST URL (same as Copy URL below)"
+                          : undefined
+                    }
+                    onClick={() => void localSyncSteps()}
+                  >
+                    {busy === "local-sync-steps"
+                      ? browserIsLocalDev === false
+                        ? "Copying…"
+                        : "Syncing…"
+                      : "Local Sync"}
+                  </button>
+                  <button
+                    type="button"
+                    className="mt-1 min-h-10 w-full rounded-full px-2 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-50"
                     onClick={() => {
                       setOpenOverflow(null);
                       setStepsIngestModalOpen(true);

@@ -17,6 +17,9 @@ function timeZoneShortLabel(iana: string): string {
   return leaf.replace(/_/g, " ");
 }
 
+const GRADIENT_NOTICE_CARD =
+  "w-full rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] px-4 py-3 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]";
+
 type Props = {
   inclusion: PatternWindowInclusion;
   timeZone: string;
@@ -49,13 +52,12 @@ export function PatternWindowInclusionSummary({ inclusion, timeZone, labelDays }
   return (
     <div className="space-y-2">
       {thinCgm === "no" ? (
-        <p
-          className="rounded-lg border border-amber-200/90 bg-amber-50/90 px-3 py-2 text-sm text-amber-950"
-          role="status"
-        >
-          No Dexcom data in this range yet. Connect Dexcom in Settings, sync, then try again—or pick a
-          shorter window if you only have a few recent days of readings.
-        </p>
+        <div className={GRADIENT_NOTICE_CARD} role="status" aria-live="polite">
+          <p className="text-sm leading-relaxed text-zinc-700">
+            No Dexcom data in this range yet. Connect Dexcom in Settings, sync, then try again—or pick a
+            shorter window if you only have a few recent days of readings.
+          </p>
+        </div>
       ) : thinCgm === "thin" ? (
         <p
           className="rounded-lg border border-amber-200/90 bg-amber-50/90 px-3 py-2 text-sm text-amber-950"

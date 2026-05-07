@@ -33,18 +33,6 @@ const TIMELINE_ROWS: {
   },
 ];
 
-const SUMMARY_ROWS: {
-  key: "showCarbsLoggedSummary";
-  title: string;
-  description: string;
-}[] = [
-  {
-    key: "showCarbsLoggedSummary",
-    title: "Carbs logged (day summary)",
-    description: "Show the “Carbs logged” card in the Day summary row.",
-  },
-];
-
 export function DisplayPreferencesCard() {
   const [prefs, setPrefs] = useState<UserPreferences | null>(null);
   const [loading, setLoading] = useState(true);
@@ -76,7 +64,7 @@ export function DisplayPreferencesCard() {
     };
   }, []);
 
-  async function onToggle(key: keyof DisplayPreferences | "showCarbsLoggedSummary") {
+  async function onToggle(key: keyof DisplayPreferences) {
     if (!prefs) return;
     const previous = prefs;
     const next = { ...prefs, [key]: !prefs[key] };
@@ -118,7 +106,7 @@ export function DisplayPreferencesCard() {
             aria-busy="true"
             aria-label="Loading display preferences"
           >
-            {[0, 1, 2, 3, 4].map((i) => (
+            {[0, 1, 2, 3].map((i) => (
               <li key={i} className="flex items-center justify-between gap-4 px-4 py-3.5">
                 <div className="min-w-0 flex-1 space-y-2">
                   <Skeleton className="h-4 w-24" />
@@ -144,23 +132,6 @@ export function DisplayPreferencesCard() {
                 </div>
                 <ToggleSwitch
                   id={`timeline-${key}`}
-                  checked={prefs[key]}
-                  disabled={saving}
-                  onChange={() => void onToggle(key)}
-                />
-              </li>
-            ))}
-            {SUMMARY_ROWS.map(({ key, title, description }) => (
-              <li
-                key={key}
-                className="flex items-center justify-between gap-4 px-4 py-3.5 first:rounded-t-xl last:rounded-b-xl"
-              >
-                <div className="min-w-0">
-                  <p className="font-medium text-zinc-900">{title}</p>
-                  <p className="mt-0.5 text-xs text-zinc-500">{description}</p>
-                </div>
-                <ToggleSwitch
-                  id={`summary-${key}`}
                   checked={prefs[key]}
                   disabled={saving}
                   onChange={() => void onToggle(key)}

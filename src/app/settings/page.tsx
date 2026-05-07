@@ -246,7 +246,7 @@ export default async function SettingsPage({
       ) : null}
 
       {showDexcomBackfillPrompt ? (
-        <DexcomBackfillPrompt shareCredentialsMode={shareDexcom} />
+        <DexcomBackfillPrompt />
       ) : null}
 
       <SettingsIntegrations

@@ -92,12 +92,20 @@ function longRunDeltaSpanLabel(args: {
   usePercentiles: boolean;
 }): { direction: LongRunDirection; spanLabel: string; absAvg: number } {
   const avgR = Math.round(args.avgMgdl);
-  const direction: LongRunDirection = avgR < 0 ? "drop" : avgR > 0 ? "rise" : "flat";
+  // Treat tiny average deltas as mixed/no clear directional signal.
+  if (Math.abs(avgR) < 8) {
+    return { direction: "flat", spanLabel: `${Math.abs(avgR)}`, absAvg: Math.abs(avgR) };
+  }
+  const direction: LongRunDirection = avgR < 0 ? "drop" : "rise";
   const absAvg = Math.abs(avgR);
 
   if (args.usePercentiles && args.p25 != null && args.p75 != null) {
     const lo = Math.min(Math.round(args.p25), Math.round(args.p75));
     const hi = Math.max(Math.round(args.p25), Math.round(args.p75));
+    // If the percentile band straddles zero, the cohort has mixed direction.
+    if (lo < 0 && hi > 0) {
+      return { direction: "flat", spanLabel: `${absAvg}`, absAvg };
+    }
 
     if (direction === "drop" && hi <= 0) {
       const m1 = Math.abs(lo);

@@ -14,6 +14,7 @@ import type { PatternWindow } from "@/lib/patterns/types";
 type Props = {
   activeWindow: PatternWindow;
   timeZone: string;
+  routeBasePath?: string;
   inclusion: ReactNode;
   summaries: ReactNode;
   takeaways: ReactNode;
@@ -22,6 +23,7 @@ type Props = {
 export function PatternsInsightsShell({
   activeWindow,
   timeZone,
+  routeBasePath = "/patterns",
   inclusion,
   summaries,
   takeaways,
@@ -39,7 +41,7 @@ export function PatternsInsightsShell({
   function navigate(next: PatternWindow) {
     if (next === activeWindow) return;
     setPendingWindow(next);
-    const href = `/patterns?window=${next}&timeZone=${encodeURIComponent(timeZone)}`;
+    const href = `${routeBasePath}?window=${next}&timeZone=${encodeURIComponent(timeZone)}`;
     startTransition(() => {
       router.push(href);
     });

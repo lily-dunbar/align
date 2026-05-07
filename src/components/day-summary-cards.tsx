@@ -105,7 +105,7 @@ export function DaySummaryCards({ dateYmd }: Props) {
   return (
     <section className="w-full">
       <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">Day summary</h2>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 lg:gap-4">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4">
         <AlignMetricCard
           variant="glucose"
           title="Avg glucose"

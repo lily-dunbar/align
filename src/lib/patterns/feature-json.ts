@@ -9,7 +9,12 @@ import { buildHeuristicPatterns } from "@/lib/patterns/heuristics";
 import { fetchLlmPatterns } from "@/lib/patterns/llm";
 import { loadPatternFeatureContext } from "@/lib/patterns/stats";
 import { selectPatternsForDisplay } from "@/lib/patterns/select-for-display";
-import type { PatternInsightJson, PatternsFeatureJson, PatternWindow } from "@/lib/patterns/types";
+import type {
+  PatternFeatureContext,
+  PatternInsightJson,
+  PatternsFeatureJson,
+  PatternWindow,
+} from "@/lib/patterns/types";
 import { rollingRangeUtc } from "@/lib/patterns/window";
 import { getUserPreferences } from "@/lib/user-display-preferences";
 
@@ -19,6 +24,64 @@ function applyThreshold(
   thresholdPercent: number,
 ): PatternInsightJson[] {
   return patterns.filter((p) => p.confidencePercent >= thresholdPercent);
+}
+
+function reconcileSessionCardDeltaText(
+  patterns: PatternInsightJson[],
+  ctx: PatternFeatureContext,
+): PatternInsightJson[] {
+  const p25 = ctx.sessions.deltaMgdlP25LongRunMi;
+  const p75 = ctx.sessions.deltaMgdlP75LongRunMi;
+  const avg = ctx.sessions.avgMgdlDeltaRunLikeOverLongRunMi;
+  if (avg == null) return patterns;
+
+  const avgRounded = Math.round(avg);
+  const mixedByTinyAverage = Math.abs(avgRounded) < 8;
+  const mixedByStraddle = p25 != null && p75 != null && Math.min(p25, p75) < 0 && Math.max(p25, p75) > 0;
+  const mixed = mixedByTinyAverage || mixedByStraddle;
+  if (!mixed) return patterns;
+
+  const longRunDeltas = ctx.evidence.sessionDeltas
+    .filter((d) => d.distanceMeters != null && d.distanceMeters >= 2 * 1609.34)
+    .map((d) => d.deltaMgdl)
+    .filter((n) => Number.isFinite(n));
+  const maxRise = longRunDeltas.length ? Math.max(...longRunDeltas) : null;
+  const maxDrop = longRunDeltas.length ? Math.min(...longRunDeltas) : null;
+  const riseMag = maxRise != null && maxRise > 0 ? Math.round(maxRise) : null;
+  const dropMag = maxDrop != null && maxDrop < 0 ? Math.abs(Math.round(maxDrop)) : null;
+
+  return patterns.map((p) => {
+    if (p.type !== "Sessions") return p;
+    const haystack = `${p.title} ${p.description}`.toLowerCase();
+    const isRunDeltaCard =
+      haystack.includes("run") &&
+      (haystack.includes("90") ||
+        haystack.includes("before") ||
+        haystack.includes("during") ||
+        haystack.includes("mile") ||
+        haystack.includes(" mi"));
+    if (!isRunDeltaCard) return p;
+
+    if (riseMag != null && (dropMag == null || riseMag >= dropMag)) {
+      return {
+        ...p,
+        title: `Some runs rise by up to ~${riseMag} mg/dL`,
+        description:
+          "Across logged longer runs in this window, session deltas vary run to run, but the largest observed rise is around this value versus the ~90 minutes before start.",
+      };
+    }
+
+    if (dropMag != null) {
+      return {
+        ...p,
+        title: `Some runs drop by up to ~${dropMag} mg/dL`,
+        description:
+          "Across logged longer runs in this window, session deltas vary run to run, but the largest observed drop is around this value versus the ~90 minutes before start.",
+      };
+    }
+
+    return p;
+  });
 }
 
 /** Deduped when multiple RSC branches load the same window in one request — pass the same `atIso`. */
@@ -82,11 +145,16 @@ async function getPatternsFeatureJsonImpl(
 
   if (llmOutcome.kind === "ok") {
     const filtered = llmOutcome.patterns.filter((p) => p.confidencePercent >= threshold);
-    patterns = attachLearnMoreToPatterns(selectPatternsForDisplay(filtered), featureContext);
+    const selected = selectPatternsForDisplay(filtered);
+    patterns = attachLearnMoreToPatterns(
+      reconcileSessionCardDeltaText(selected, featureContext),
+      featureContext,
+    );
     source = "anthropic";
   } else {
+    const selected = selectPatternsForDisplay(applyThreshold(heuristics, threshold));
     patterns = attachLearnMoreToPatterns(
-      selectPatternsForDisplay(applyThreshold(heuristics, threshold)),
+      reconcileSessionCardDeltaText(selected, featureContext),
       featureContext,
     );
     source = "heuristic";

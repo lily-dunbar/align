@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
@@ -61,6 +62,13 @@ export default async function PatternsPage({
         <div className="rounded-2xl border border-align-border/90 bg-white/90 p-6 ring-1 ring-black/[0.03]">
           <p className="text-sm text-zinc-700">
             Sign in to load pattern summaries from your Dexcom, movement, sleep, and meals.
+          </p>
+          <p className="mt-3 text-sm text-zinc-700">
+            Want to explore first? Try the{" "}
+            <Link className="font-medium text-zinc-900 underline" href="/demo">
+              public demo
+            </Link>
+            .
           </p>
         </div>
       ) : null}

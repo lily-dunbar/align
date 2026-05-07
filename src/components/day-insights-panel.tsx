@@ -711,7 +711,9 @@ export function DayInsightsPanel({ dateYmd }: Props) {
                   </div>
                 </div>
                 <div className="shrink-0 sm:max-w-[11rem] sm:pt-0.5">
-                  <BgDeltaChip delta={item.bgDeltaMgdl} />
+                  <div className="hidden">
+                    <BgDeltaChip delta={item.bgDeltaMgdl} />
+                  </div>
                   {item.kind !== "strava" ? (
                     <div className="mt-2 flex justify-end gap-1.5">
                       <button

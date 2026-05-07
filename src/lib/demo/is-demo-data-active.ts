@@ -1,5 +1,6 @@
 import "server-only";
 
+import { isPublicDemoUser } from "@/lib/demo/public-demo";
 import { getDeveloperDemoModeForUser } from "@/lib/user-display-preferences";
 
 /**
@@ -7,5 +8,6 @@ import { getDeveloperDemoModeForUser } from "@/lib/user-display-preferences";
  * (`DEMO_MODE` env does not override — so production users can always turn demo off.)
  */
 export async function isDemoDataActive(userId: string): Promise<boolean> {
+  if (isPublicDemoUser(userId)) return true;
   return getDeveloperDemoModeForUser(userId);
 }

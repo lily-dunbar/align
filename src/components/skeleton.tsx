@@ -57,7 +57,7 @@ export function DaySummaryCardsSkeleton() {
   return (
     <section className="w-full" aria-label="Loading day summary" role="status" aria-busy="true">
       <Skeleton className="mb-4 h-3 w-24" />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 lg:gap-4">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-3 md:gap-4">
         <MetricCardShape />
         <MetricCardShape />
         <MetricCardShape />

@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { DEMO_DAY_INSIGHTS } from "@/lib/demo/demo-day-insights";
 import { isDemoDataActive } from "@/lib/demo/is-demo-data-active";
+import { PUBLIC_DEMO_USER_ID } from "@/lib/demo/public-demo";
+import { isDemoRequest } from "@/lib/demo/request-mode";
 import { buildDailySparkInsight } from "@/lib/day-insight-daily-spark";
 import { loadDayInsightSnapshot } from "@/lib/day-insight-context";
 import { digestDayInsightSnapshot } from "@/lib/day-insight-digest";
@@ -10,7 +12,9 @@ import { fetchDayInsightsWithClaude } from "@/lib/day-insights-llm";
 
 export async function GET(request: NextRequest) {
   const { userId } = await auth();
-  if (!userId) {
+  const demoMode = isDemoRequest(request);
+  const effectiveUserId = userId ?? (demoMode ? PUBLIC_DEMO_USER_ID : null);
+  if (!effectiveUserId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -25,7 +29,7 @@ export async function GET(request: NextRequest) {
   try {
     const sinceDigest = url.searchParams.get("sinceDigest")?.trim() ?? "";
 
-    const snapshot = await loadDayInsightSnapshot(userId, date, timeZone);
+    const snapshot = await loadDayInsightSnapshot(effectiveUserId, date, timeZone);
     const digest = digestDayInsightSnapshot(snapshot);
 
     if (sinceDigest && sinceDigest === digest) {
@@ -40,7 +44,7 @@ export async function GET(request: NextRequest) {
 
     const spark = buildDailySparkInsight({ ...snapshot, dateYmd: date });
 
-    if (await isDemoDataActive(userId)) {
+    if (await isDemoDataActive(effectiveUserId)) {
       return NextResponse.json({
         ok: true,
         source: "demo" as const,

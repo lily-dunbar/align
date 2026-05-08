@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 import { Skeleton } from "@/components/skeleton";
 import type { UserPreferences } from "@/lib/user-display-preferences";
@@ -39,6 +40,9 @@ function targetsMatch(a: TargetFields, b: TargetFields): boolean {
 }
 
 export function SettingsTargetsCard() {
+  const pathname = usePathname();
+  const isDemoRoute = pathname.startsWith("/demo");
+  const preferencesUrl = `/api/settings/preferences${isDemoRoute ? "?demo=1" : ""}`;
   const [prefs, setPrefs] = useState<UserPreferences | null>(null);
   const [savedTargets, setSavedTargets] = useState<TargetFields | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,7 +54,7 @@ export function SettingsTargetsCard() {
     let cancelled = false;
     async function run() {
       try {
-        const resp = await fetch("/api/settings/preferences", { cache: "no-store" });
+        const resp = await fetch(preferencesUrl, { cache: "no-store" });
         const json = (await resp.json()) as {
           preferences?: UserPreferences;
           error?: string;
@@ -72,14 +76,14 @@ export function SettingsTargetsCard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [preferencesUrl]);
 
   async function saveTargets() {
     if (!prefs) return;
     setSaving(true);
     setError(null);
     try {
-      const resp = await fetch("/api/settings/preferences", {
+      const resp = await fetch(preferencesUrl, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

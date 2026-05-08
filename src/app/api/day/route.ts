@@ -14,6 +14,8 @@ import {
 import { metersToMilesDisplay } from "@/lib/distance-units";
 import { buildDemoDayApiPayload } from "@/lib/demo/build-demo-day-api";
 import { isDemoDataActive } from "@/lib/demo/is-demo-data-active";
+import { PUBLIC_DEMO_USER_ID } from "@/lib/demo/public-demo";
+import { isDemoRequest } from "@/lib/demo/request-mode";
 import { dayBoundsUtcForYmd, todayBoundsUtc } from "@/lib/day-bounds";
 import {
   clampTargetHighMgdl,
@@ -71,7 +73,9 @@ function fillMissingHourlyStepBuckets(
 
 export async function GET(request: NextRequest) {
   const { userId } = await auth();
-  if (!userId) {
+  const demoMode = isDemoRequest(request);
+  const effectiveUserId = userId ?? (demoMode ? PUBLIC_DEMO_USER_ID : null);
+  if (!effectiveUserId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -79,7 +83,7 @@ export async function GET(request: NextRequest) {
   const date = url.searchParams.get("date");
   const timeZone = url.searchParams.get("timeZone") ?? "UTC";
 
-  const prefs = await getUserPreferences(userId);
+  const prefs = await getUserPreferences(effectiveUserId);
   let targetLowMgdl = prefs.targetLowMgdl;
   let targetHighMgdl = prefs.targetHighMgdl;
   const qLow = url.searchParams.get("targetLowMgdl");
@@ -107,9 +111,9 @@ export async function GET(request: NextRequest) {
 
   const { startUtc, endUtcExclusive } = bounds;
 
-  if (await isDemoDataActive(userId)) {
+  if (await isDemoDataActive(effectiveUserId)) {
     const demoPayload = buildDemoDayApiPayload({
-      userId,
+      userId: effectiveUserId,
       date: date ?? null,
       timeZone,
       startUtc,
@@ -165,7 +169,7 @@ export async function GET(request: NextRequest) {
     [glucose, steps, workouts, food, sleep, stravaActivities] = await Promise.all([
       db.query.glucoseReadings.findMany({
         where: and(
-          eq(glucoseReadings.userId, userId),
+          eq(glucoseReadings.userId, effectiveUserId),
           gte(glucoseReadings.observedAt, startUtc),
           lt(glucoseReadings.observedAt, endUtcExclusive),
         ),
@@ -177,7 +181,7 @@ export async function GET(request: NextRequest) {
       }),
       db.query.hourlySteps.findMany({
         where: and(
-          eq(hourlySteps.userId, userId),
+          eq(hourlySteps.userId, effectiveUserId),
           gte(hourlySteps.bucketStart, startUtc),
           lt(hourlySteps.bucketStart, endUtcExclusive),
         ),
@@ -191,7 +195,7 @@ export async function GET(request: NextRequest) {
       }),
       db.query.manualWorkouts.findMany({
         where: and(
-          eq(manualWorkouts.userId, userId),
+          eq(manualWorkouts.userId, effectiveUserId),
           gte(manualWorkouts.startedAt, startUtc),
           lt(manualWorkouts.startedAt, endUtcExclusive),
         ),
@@ -206,7 +210,7 @@ export async function GET(request: NextRequest) {
       }),
       db.query.foodEntries.findMany({
         where: and(
-          eq(foodEntries.userId, userId),
+          eq(foodEntries.userId, effectiveUserId),
           gte(foodEntries.eatenAt, startUtc),
           lt(foodEntries.eatenAt, endUtcExclusive),
         ),
@@ -222,7 +226,7 @@ export async function GET(request: NextRequest) {
       }),
       db.query.sleepWindows.findMany({
         where: and(
-          eq(sleepWindows.userId, userId),
+          eq(sleepWindows.userId, effectiveUserId),
           lt(sleepWindows.sleepStart, endUtcExclusive),
           gte(sleepWindows.sleepEnd, startUtc),
         ),
@@ -235,7 +239,7 @@ export async function GET(request: NextRequest) {
       }),
       db.query.activities.findMany({
         where: and(
-          eq(activities.userId, userId),
+          eq(activities.userId, effectiveUserId),
           eq(activities.provider, "strava"),
           gte(activities.startAt, startUtc),
           lt(activities.startAt, endUtcExclusive),

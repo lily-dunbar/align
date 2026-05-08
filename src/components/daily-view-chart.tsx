@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
 import { addDays } from "date-fns";
 import { formatInTimeZone, toDate } from "date-fns-tz";
 
@@ -542,6 +543,8 @@ type Props = {
 };
 
 export function DailyViewChart({ dateYmd }: Props) {
+  const pathname = usePathname();
+  const isDemoRoute = pathname.startsWith("/demo");
   const resolvedDateYmd = useResolvedDayYmd(dateYmd);
   const effectiveTz = useEffectiveTimeZone();
   const prefersReducedMotion = usePrefersReducedMotion();
@@ -564,7 +567,7 @@ export function DailyViewChart({ dateYmd }: Props) {
     try {
       const tz = effectiveTz;
       const resp = await fetch(
-        `/api/day?date=${encodeURIComponent(resolvedDateYmd)}&timeZone=${encodeURIComponent(tz)}`,
+        `/api/day?date=${encodeURIComponent(resolvedDateYmd)}&timeZone=${encodeURIComponent(tz)}${isDemoRoute ? "&demo=1" : ""}`,
         {
           cache: "no-store",
         },
@@ -575,7 +578,7 @@ export function DailyViewChart({ dateYmd }: Props) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     }
-  }, [resolvedDateYmd, effectiveTz]);
+  }, [resolvedDateYmd, effectiveTz, isDemoRoute]);
 
   useEffect(() => {
     const id = requestAnimationFrame(() => {
@@ -680,7 +683,9 @@ export function DailyViewChart({ dateYmd }: Props) {
     let cancelled = false;
     async function run() {
       try {
-        const resp = await fetch("/api/settings/preferences", { cache: "no-store" });
+        const resp = await fetch(`/api/settings/preferences${isDemoRoute ? "?demo=1" : ""}`, {
+          cache: "no-store",
+        });
         const json = (await resp.json()) as {
           preferences?: ChartDisplayPreferences & { patternThresholdPercent?: number };
           error?: string;
@@ -697,7 +702,7 @@ export function DailyViewChart({ dateYmd }: Props) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isDemoRoute]);
 
   const chartData = useMemo(() => {
     if (!payload) {
@@ -834,14 +839,16 @@ export function DailyViewChart({ dateYmd }: Props) {
           Daily View
         </h2>
         <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            disabled={reloadBusy}
-            onClick={() => void reloadLatestData()}
-            className="inline-flex min-h-9 items-center justify-center rounded-full border border-align-border/90 bg-white px-3 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-black/[0.03] transition hover:bg-align-subtle disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {reloadBusy ? "Reloading…" : "Reload data"}
-          </button>
+          {!isDemoRoute ? (
+            <button
+              type="button"
+              disabled={reloadBusy}
+              onClick={() => void reloadLatestData()}
+              className="inline-flex min-h-9 items-center justify-center rounded-full border border-align-border/90 bg-white px-3 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-black/[0.03] transition hover:bg-align-subtle disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {reloadBusy ? "Reloading…" : "Reload data"}
+            </button>
+          ) : null}
           {(
             [
               { id: "24h" as const, label: "24h" },

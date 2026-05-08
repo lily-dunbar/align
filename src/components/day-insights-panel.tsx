@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { addDays } from "date-fns";
 import { formatInTimeZone, toDate } from "date-fns-tz";
@@ -442,6 +443,8 @@ const KIND_ACCENT_CLASS: Record<ActivityKind, string> = {
 };
 
 export function DayInsightsPanel({ dateYmd }: Props) {
+  const pathname = usePathname();
+  const isDemoRoute = pathname.startsWith("/demo");
   const { userId, isLoaded } = useAuth();
   const resolvedDateYmd = useResolvedDayYmd(dateYmd);
   const effectiveTz = useEffectiveTimeZone();
@@ -450,6 +453,7 @@ export function DayInsightsPanel({ dateYmd }: Props) {
   const [data, setData] = useState<DayResponse | null>(null);
 
   const deleteItem = useCallback(async (item: ActivityItem) => {
+    if (isDemoRoute) return;
     if (item.kind === "strava") return;
 
     const label =
@@ -476,10 +480,11 @@ export function DayInsightsPanel({ dateYmd }: Props) {
 
     await fetch(url, { method: "DELETE" });
     window.dispatchEvent(new CustomEvent(DAY_DATA_CHANGED_EVENT));
-  }, []);
+  }, [isDemoRoute]);
 
   const runFetch = useCallback(async () => {
-    if (!isLoaded || !userId) return;
+    if (!isLoaded) return;
+    if (!userId && !isDemoRoute) return;
     setLoading(true);
     setError(null);
     try {
@@ -487,6 +492,7 @@ export function DayInsightsPanel({ dateYmd }: Props) {
         date: resolvedDateYmd,
         timeZone: effectiveTz,
       });
+      if (isDemoRoute) qs.set("demo", "1");
       const resp = await fetch(`/api/day?${qs.toString()}`, {
         cache: "no-store",
         credentials: "include",
@@ -502,7 +508,7 @@ export function DayInsightsPanel({ dateYmd }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [resolvedDateYmd, effectiveTz, userId, isLoaded]);
+  }, [resolvedDateYmd, effectiveTz, userId, isLoaded, isDemoRoute]);
 
   useEffect(() => {
     queueMicrotask(() => void runFetch());
@@ -714,7 +720,7 @@ export function DayInsightsPanel({ dateYmd }: Props) {
                   <div className="hidden">
                     <BgDeltaChip delta={item.bgDeltaMgdl} />
                   </div>
-                  {item.kind !== "strava" ? (
+                  {!isDemoRoute && item.kind !== "strava" ? (
                     <div className="mt-2 flex justify-end gap-1.5">
                       <button
                         type="button"

@@ -13,8 +13,12 @@ import type { PatternWindow } from "@/lib/patterns/types";
 
 function navActive(href: string, pathname: string) {
   if (href === "/") return pathname === "/";
+  if (href === "/demo") return pathname === "/demo";
   if (href.startsWith("/patterns?") || href === "/patterns") {
     return pathname === "/patterns" || pathname.startsWith("/patterns/");
+  }
+  if (href.startsWith("/demo/patterns?") || href === "/demo/patterns") {
+    return pathname === "/demo/patterns" || pathname.startsWith("/demo/patterns/");
   }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
@@ -31,6 +35,18 @@ function buildInsightsHref() {
   return `/patterns?window=${w}&timeZone=${encodeURIComponent(tz)}`;
 }
 
+function buildDemoInsightsHref() {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  let w: PatternWindow = "30d";
+  try {
+    const s = parseStoredPatternWindow(sessionStorage.getItem(PATTERNS_WINDOW_STORAGE_KEY));
+    if (s) w = s;
+  } catch {
+    /* private mode */
+  }
+  return `/demo/patterns?window=${w}&timeZone=${encodeURIComponent(tz)}`;
+}
+
 export function AppBottomNav() {
   const pathname = usePathname();
   const [insightsBump, setInsightsBump] = useState(0);
@@ -45,8 +61,15 @@ export function AppBottomNav() {
 
   void insightsBump;
 
+  const isDemoRoute = pathname.startsWith("/demo");
   const insightsHref =
-    typeof window === "undefined" ? "/patterns?window=30d" : buildInsightsHref();
+    typeof window === "undefined"
+      ? isDemoRoute
+        ? "/demo/patterns?window=30d"
+        : "/patterns?window=30d"
+      : isDemoRoute
+        ? buildDemoInsightsHref()
+        : buildInsightsHref();
 
   if (
     pathname.startsWith("/sign-in") ||
@@ -59,7 +82,7 @@ export function AppBottomNav() {
 
   const items: { href: string; label: string; icon: ReactNode; linkKey: string }[] = [
     {
-      href: "/",
+      href: isDemoRoute ? "/demo" : "/",
       label: "Daily",
       linkKey: "daily",
       icon: (
@@ -87,7 +110,7 @@ export function AppBottomNav() {
       ),
     },
     {
-      href: "/settings",
+      href: isDemoRoute ? "/demo/settings" : "/settings",
       label: "Settings",
       linkKey: "settings",
       icon: (

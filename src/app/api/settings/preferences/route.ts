@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
+import { PUBLIC_DEMO_USER_ID } from "@/lib/demo/public-demo";
 import {
   getUserPreferences,
   parseOptionalIanaTimeZone,
@@ -12,10 +13,14 @@ import {
   isDeveloperSettingsEnabled,
 } from "@/lib/developer-settings";
 
-export async function GET() {
+export async function GET(request: Request) {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const preferences = await getUserPreferences(userId);
+  const url = new URL(request.url);
+  const v = url.searchParams.get("demo")?.trim().toLowerCase();
+  const demoMode = v === "1" || v === "true" || v === "yes";
+  const effectiveUserId = userId ?? (demoMode ? PUBLIC_DEMO_USER_ID : null);
+  if (!effectiveUserId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const preferences = await getUserPreferences(effectiveUserId);
   return NextResponse.json({ preferences });
 }
 
@@ -23,13 +28,17 @@ type PatchBody = Partial<UserPreferences>;
 
 export async function PATCH(request: Request) {
   const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const url = new URL(request.url);
+  const v = url.searchParams.get("demo")?.trim().toLowerCase();
+  const demoMode = v === "1" || v === "true" || v === "yes";
+  const effectiveUserId = userId ?? (demoMode ? PUBLIC_DEMO_USER_ID : null);
+  if (!effectiveUserId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = (await request.json()) as PatchBody;
   const patch: PatchBody = {};
 
   const dev = isDeveloperSettingsEnabled();
-  if (body.developerDemoMode !== undefined && !canUserPatchDeveloperDemoMode(userId)) {
+  if (!demoMode && body.developerDemoMode !== undefined && !canUserPatchDeveloperDemoMode(effectiveUserId)) {
     return NextResponse.json({ error: "Demo mode cannot be changed for this account" }, { status: 403 });
   }
   /** Completing onboarding (`true`) is always allowed; clearing (`false`) is developer-only or via reset route. */
@@ -61,8 +70,10 @@ export async function PATCH(request: Request) {
   if (typeof body.targetStepsPerDay === "number") {
     patch.targetStepsPerDay = body.targetStepsPerDay;
   }
-  if (typeof body.developerDemoMode === "boolean") patch.developerDemoMode = body.developerDemoMode;
-  if (typeof body.onboardingCompleted === "boolean") {
+  if (!demoMode && typeof body.developerDemoMode === "boolean") {
+    patch.developerDemoMode = body.developerDemoMode;
+  }
+  if (!demoMode && typeof body.onboardingCompleted === "boolean") {
     patch.onboardingCompleted = body.onboardingCompleted;
   }
   if (typeof body.dexcomBackfill90PromptDismissed === "boolean") {
@@ -74,7 +85,7 @@ export async function PATCH(request: Request) {
   }
 
   try {
-    const preferences = await updateUserPreferences(userId, patch);
+    const preferences = await updateUserPreferences(effectiveUserId, patch);
     return NextResponse.json({ preferences });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Invalid preferences";

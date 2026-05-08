@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 import { AlignMetricCard } from "@/components/align-metric-card";
 import { DaySummaryCardsSkeleton } from "@/components/skeleton";
@@ -31,6 +32,8 @@ type Props = {
 };
 
 export function DaySummaryCards({ dateYmd }: Props) {
+  const pathname = usePathname();
+  const isDemoRoute = pathname.startsWith("/demo");
   const resolvedDateYmd = useResolvedDayYmd(dateYmd);
   const effectiveTz = useEffectiveTimeZone();
   const [data, setData] = useState<DaySummaryResponse | null>(null);
@@ -40,7 +43,7 @@ export function DaySummaryCards({ dateYmd }: Props) {
     setError(null);
     try {
       const resp = await fetch(
-        `/api/day?date=${encodeURIComponent(resolvedDateYmd)}&timeZone=${encodeURIComponent(effectiveTz)}`,
+        `/api/day?date=${encodeURIComponent(resolvedDateYmd)}&timeZone=${encodeURIComponent(effectiveTz)}${isDemoRoute ? "&demo=1" : ""}`,
         { cache: "no-store" },
       );
       const json = (await resp.json()) as DaySummaryResponse & { error?: string };
@@ -49,7 +52,7 @@ export function DaySummaryCards({ dateYmd }: Props) {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     }
-  }, [resolvedDateYmd, effectiveTz]);
+  }, [resolvedDateYmd, effectiveTz, isDemoRoute]);
 
   useEffect(() => {
     const id = requestAnimationFrame(() => {

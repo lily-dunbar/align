@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 import { ToggleSwitch } from "@/components/toggle-switch";
 import { Skeleton } from "@/components/skeleton";
@@ -34,6 +35,9 @@ const TIMELINE_ROWS: {
 ];
 
 export function DisplayPreferencesCard() {
+  const pathname = usePathname();
+  const isDemoRoute = pathname.startsWith("/demo");
+  const preferencesUrl = `/api/settings/preferences${isDemoRoute ? "?demo=1" : ""}`;
   const [prefs, setPrefs] = useState<UserPreferences | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +47,7 @@ export function DisplayPreferencesCard() {
     let cancelled = false;
     async function run() {
       try {
-        const resp = await fetch("/api/settings/preferences", { cache: "no-store" });
+        const resp = await fetch(preferencesUrl, { cache: "no-store" });
         const json = (await resp.json()) as {
           preferences?: UserPreferences;
           error?: string;
@@ -62,7 +66,7 @@ export function DisplayPreferencesCard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [preferencesUrl]);
 
   async function onToggle(key: keyof DisplayPreferences) {
     if (!prefs) return;
@@ -72,7 +76,7 @@ export function DisplayPreferencesCard() {
     setSaving(true);
     setError(null);
     try {
-      const resp = await fetch("/api/settings/preferences", {
+      const resp = await fetch(preferencesUrl, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [key]: next[key] }),

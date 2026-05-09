@@ -1,5 +1,6 @@
 import { DayInsightsPanel } from "@/components/day-insights-panel";
 import { DaySummaryCards } from "@/components/day-summary-cards";
+import { DateNav } from "@/components/date-nav";
 import { DailyViewChart } from "@/components/daily-view-chart";
 
 function readParam(
@@ -24,9 +25,7 @@ export default async function DemoPage({
 
   return (
     <main className="mx-auto flex min-h-[100dvh] w-full max-w-6xl flex-col gap-8 bg-background px-4 py-8 md:px-8 md:py-10">
-      <div className="rounded-2xl border border-align-border/90 bg-white/90 p-4 text-sm text-zinc-700 ring-1 ring-black/[0.03]">
-        Public demo view. Data is synthetic and read-only. Use the bottom nav to explore pages.
-      </div>
+      <DateNav initialDateYmd={selectedDateYmd} />
       <DailyViewChart dateYmd={selectedDateYmd} />
       <DaySummaryCards dateYmd={selectedDateYmd} />
       <DayInsightsPanel key={`demo-insights-${selectedDateYmd}`} dateYmd={selectedDateYmd} />

@@ -39,6 +39,35 @@ function mean(values: number[]): number {
   return values.reduce((s, x) => s + x, 0) / values.length;
 }
 
+function hashInt(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function percentileFromSorted(sorted: number[], p: number): number | null {
+  if (!sorted.length) return null;
+  if (sorted.length === 1) return sorted[0]!;
+  const idx = (sorted.length - 1) * p;
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi) return sorted[lo]!;
+  return sorted[lo]! * (hi - idx) + sorted[hi]! * (idx - lo);
+}
+
+function runDeltaMgdlForDay(ymd: string, seed: string): number {
+  // Deterministic per day, with realistic run-time drops.
+  return -(24 + (hashInt(`${seed}|run-delta|${ymd}`) % 22));
+}
+
+function swimDeltaMgdlForDay(ymd: string, seed: string): number {
+  // Deterministic per day, typically a modest upward shift.
+  return 14 + (hashInt(`${seed}|swim-delta|${ymd}`) % 24);
+}
+
 export function demoHourMeansForDay(ymd: string, seed: string): number[] {
   const hourly: number[] = Array(24).fill(0);
   const isWeekend = calendarYmdIsWeekend(ymd);
@@ -211,6 +240,13 @@ export function computeDemoStepsStats(
 export function computeDemoSessionStats(ymds: string[], seed: string): SessionStats {
   const runDays = ymds.filter((y) => getDemoDayProfile(y, seed).hasDistanceRun);
   const swimDays = ymds.filter((y) => getDemoDayProfile(y, seed).hasLongSwim);
+  const runDeltas = runDays.map((y) => runDeltaMgdlForDay(y, seed));
+  const allSessionDeltas = [
+    ...runDeltas,
+    ...swimDays.map((y) => swimDeltaMgdlForDay(y, seed)),
+  ];
+  const avgRunDelta = runDeltas.length ? mean(runDeltas) : null;
+  const sortedRun = [...runDeltas].sort((a, b) => a - b);
 
   return {
     workoutStartsCount: runDays.length + swimDays.length,
@@ -218,18 +254,19 @@ export function computeDemoSessionStats(ymds: string[], seed: string): SessionSt
     manualWorkoutCount: swimDays.length,
     readingsNearWorkout2h: Math.min(ymds.length * 40, 2400),
     readingsAwayFromWorkout2h: Math.max(200, ymds.length * 200),
-    meanMgdlNearWorkout2h: 112,
-    meanMgdlAwayFromWorkout2h: 138,
+    meanMgdlNearWorkout2h:
+      allSessionDeltas.length > 0 ? 136 + mean(allSessionDeltas) : null,
+    meanMgdlAwayFromWorkout2h: allSessionDeltas.length > 0 ? 136 : null,
     runLikeSessionsWithDelta: runDays.length,
-    avgMgdlDeltaRunLike: runDays.length ? -36 : null,
+    avgMgdlDeltaRunLike: avgRunDelta,
     avgDistanceMetersRunLike: 4 * 1609.34,
     avgDurationMinutesRunLike: 32,
     dominantRunLikeLabel: "Run",
     longRunMilesThreshold: 2,
     runLikeSessionsDeltaOverLongRunMi: runDays.length,
-    avgMgdlDeltaRunLikeOverLongRunMi: runDays.length ? -36 : null,
-    deltaMgdlP25LongRunMi: -32,
-    deltaMgdlP75LongRunMi: -40,
+    avgMgdlDeltaRunLikeOverLongRunMi: avgRunDelta,
+    deltaMgdlP25LongRunMi: percentileFromSorted(sortedRun, 0.25),
+    deltaMgdlP75LongRunMi: percentileFromSorted(sortedRun, 0.75),
   };
 }
 
@@ -239,7 +276,7 @@ export function buildDemoSessionDeltaPoints(ymds: string[], seed: string): Patte
     const p = getDemoDayProfile(ymd, seed);
     if (p.hasDistanceRun) {
       out.push({
-        deltaMgdl: -36,
+        deltaMgdl: runDeltaMgdlForDay(ymd, seed),
         distanceMeters: Math.round(4.1 * 1609.34),
         label: "Afternoon run",
         startYmd: ymd,
@@ -247,7 +284,7 @@ export function buildDemoSessionDeltaPoints(ymds: string[], seed: string): Patte
     }
     if (p.hasLongSwim) {
       out.push({
-        deltaMgdl: 28,
+        deltaMgdl: swimDeltaMgdlForDay(ymd, seed),
         distanceMeters: null,
         label: "Pool swim (40+ min)",
         startYmd: ymd,

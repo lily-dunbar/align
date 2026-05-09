@@ -29,12 +29,13 @@ function UserMenuIcon() {
 }
 
 type AppHeaderProps = {
-  /** True when Demo Mode is on for this account (Settings) — shows the yellow banner. */
+  /** True when Demo Mode is on for this account (Settings). */
   devModeBanner?: boolean;
 };
 
 export function AppHeader({ devModeBanner = false }: AppHeaderProps) {
   const pathname = usePathname();
+  const showDemoBanner = devModeBanner || pathname.startsWith("/demo");
   const { isSignedIn, isLoaded } = useAuth();
   const { user } = useUser();
   const initial = (user?.firstName?.trim().charAt(0) || user?.username?.trim().charAt(0) || "A")
@@ -46,8 +47,8 @@ export function AppHeader({ devModeBanner = false }: AppHeaderProps) {
 
   return (
     <header className="sticky top-0 z-40 border-b border-align-border/80 bg-white/85 backdrop-saturate-150 backdrop-blur-md supports-[backdrop-filter]:bg-white/70">
-      {devModeBanner ? (
-        <div className="border-b border-yellow-200/80 bg-yellow-50/90 px-4 py-1.5 text-center text-xs font-medium text-yellow-600 md:px-8">
+      {showDemoBanner ? (
+        <div className="border-b border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] px-4 py-1.5 text-center text-xs font-medium text-slate-700 md:px-8">
           Demo Mode
         </div>
       ) : null}
@@ -80,7 +81,6 @@ export function AppHeader({ devModeBanner = false }: AppHeaderProps) {
                 elements: {
                   avatarBox:
                     "h-11 w-11 rounded-full border border-white/60 bg-[radial-gradient(circle_at_82%_12%,#acb98a_0%,#8baa90_20%,#5f8ea0_52%,#2f7185_100%)] shadow-sm shadow-black/15",
-                  avatarImage: "hidden",
                   avatarFallback:
                     "h-full w-full rounded-full bg-transparent text-base font-semibold text-white",
                 },

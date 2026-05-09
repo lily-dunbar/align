@@ -32,6 +32,7 @@ type DayApiResponse = {
     timeZone: string;
   };
   aggregates: {
+    totalSteps?: number;
     tir: {
       targetLowMgdl: number;
       targetHighMgdl: number;
@@ -811,6 +812,10 @@ export function DailyViewChart({ dateYmd }: Props) {
   const tz = payload.day.timeZone;
   const low = payload.aggregates.tir.targetLowMgdl;
   const high = payload.aggregates.tir.targetHighMgdl;
+  const totalSteps =
+    typeof payload.aggregates.totalSteps === "number" && Number.isFinite(payload.aggregates.totalSteps)
+      ? payload.aggregates.totalSteps
+      : payload.streams.hourlySteps.reduce((sum, s) => sum + s.stepCount, 0);
   const showSteps = prefs?.showSteps ?? true;
   const showActivity = prefs?.showActivity ?? true;
   const showSleep = prefs?.showSleep ?? true;
@@ -835,9 +840,14 @@ export function DailyViewChart({ dateYmd }: Props) {
   return (
     <section className="w-full min-w-0 rounded-2xl border border-align-border/90 bg-white/90 p-5 text-left ring-1 ring-black/[0.03] backdrop-blur-[2px] md:p-6">
       <div className="flex flex-row items-center justify-between gap-3">
-        <h2 className="min-w-0 flex-1 text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
-          Daily View
-        </h2>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
+            Daily View
+          </h2>
+          {showSteps ? (
+            <p className="mt-1 text-xs text-zinc-600">Steps: {totalSteps.toLocaleString()}</p>
+          ) : null}
+        </div>
         <div className="flex shrink-0 items-center gap-2">
           {!isDemoRoute ? (
             <button

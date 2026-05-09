@@ -64,7 +64,8 @@ export function getDemoDayProfile(ymd: string, seed: string): DemoDayProfile {
   const weekend = calendarYmdIsWeekend(ymd);
   const sun0 = ymdWeekdaySun0(ymd);
 
-  const dailySteps = Math.round(3000 + rng() * 10_500);
+  // Keep demo activity around a realistic "active day" baseline (~10k/day).
+  const dailySteps = Math.round(9000 + rng() * 2500);
   const stepsGlucoseShift = -clamp((dailySteps - 7000) / 250, -32, 12);
 
   const weekendGlucoseLift = weekend ? 10 + rng() * 10 : 0;

@@ -27,42 +27,77 @@ function mean(nums: number[]): number {
   return nums.reduce((a, b) => a + b, 0) / nums.length;
 }
 
-function demoPatterns(threshold: number): PatternInsightJson[] {
+function demoPatterns(
+  threshold: number,
+  window: PatternWindow,
+  ctx: PatternFeatureContext,
+): PatternInsightJson[] {
+  const runDelta = ctx.sessions.avgMgdlDeltaRunLikeOverLongRunMi;
+  const runDeltaMag = runDelta != null ? Math.abs(Math.round(runDelta)) : null;
+  const runDirection = runDelta != null && runDelta > 0 ? "rise" : "drop";
+  const stepsDelta = ctx.steps.meanMgdlDeltaLessActiveMinusActive;
+  const stepsMag = stepsDelta != null ? Math.abs(Math.round(stepsDelta)) : null;
+  const windowTag =
+    window === "7d" ? "quick-view" : window === "30d" ? "balanced-view" : "long-view";
+  const temporalConfidence =
+    window === "7d" ? 84 : window === "30d" ? 88 : 91;
+  const sessionsConfidence =
+    window === "7d" ? 82 : window === "30d" ? 86 : 89;
+  const stepsConfidence =
+    window === "7d" ? 80 : window === "30d" ? 85 : 88;
+
   const base: PatternInsightJson[] = [
     {
-      id: "demo-temporal-lunch",
-      title: "Midday glucose shifts around logged lunch timing",
+      id: `demo-temporal-lunch-${windowTag}`,
+      title:
+        window === "7d"
+          ? "This week: midday glucose shifts near lunch timing"
+          : window === "90d"
+            ? "Across 90 days, midday glucose still shifts near lunch timing"
+            : "Midday glucose shifts around logged lunch timing",
       description:
         "Logged lunch timing and midday glucose movement are close in clock time, but direction and size vary by day. Use this as timing context, not a fixed post-meal rise rule.",
       type: "Temporal",
-      confidencePercent: 88,
+      confidencePercent: temporalConfidence,
       linkedSources: ["Dexcom"],
     },
     {
-      id: "demo-steps-threshold",
-      title: "Higher step days skew toward lower average glucose",
+      id: `demo-steps-threshold-${windowTag}`,
+      title:
+        stepsMag != null
+          ? `Higher step days skew ~${stepsMag} mg/dL ${stepsDelta! > 0 ? "lower" : "higher"}`
+          : "Higher step days skew toward lower average glucose",
       description:
-        "Daily step totals are compared against each day’s mean glucose: busier movement days run lower on average than sedentary ones in this window.",
+        window === "7d"
+          ? "In this shorter window, the day-level step split is noisier but still directionally useful."
+          : "Daily step totals are compared against each day’s mean glucose: busier movement days run lower on average than sedentary ones in this window.",
       type: "Steps",
-      confidencePercent: 86,
+      confidencePercent: stepsConfidence,
       linkedSources: ["Dexcom", "Apple Steps"],
     },
     {
-      id: "demo-sessions-activity",
-      title: "Distance runs show a steady glucose dip; long swims often bump it",
+      id: `demo-sessions-activity-${windowTag}`,
+      title:
+        runDeltaMag != null
+          ? `Distance runs often ${runDirection} by ~${runDeltaMag} mg/dL`
+          : "Distance runs show a steady glucose dip; long swims often bump it",
       description:
-        "Strava runs pair with a repeatable ~30 mg/dL-class drop during the block; pool swims over ~30 minutes align with a modest rise — illustrative only.",
+        window === "90d"
+          ? "Over a longer range, run-linked deltas smooth out and are easier to compare against occasional swim-related bumps."
+          : "Strava runs pair with a repeatable drop during the block; pool swims over ~30 minutes align with a modest rise — illustrative only.",
       type: "Sessions",
-      confidencePercent: 85,
+      confidencePercent: sessionsConfidence,
       linkedSources: ["Dexcom", "Strava"],
     },
     {
-      id: "demo-temporal-weekend",
+      id: `demo-temporal-weekend-${windowTag}`,
       title: "Weekend averages run higher than weekdays here",
       description:
-        "Sat/Sun glucose runs slightly higher versus Mon–Fri; compare bars across a 30-day filter or use 7 days for a lighter view.",
+        window === "7d"
+          ? "In a one-week lens this can flip faster day to day; expand to 30/90 days for stability."
+          : "Sat/Sun glucose runs slightly higher versus Mon–Fri; compare bars across a 30-day filter or use 7 days for a lighter view.",
       type: "Temporal",
-      confidencePercent: 83,
+      confidencePercent: window === "7d" ? 76 : 83,
       linkedSources: ["Dexcom"],
     },
   ];
@@ -140,10 +175,6 @@ export function buildDemoPatternsFeatureJson(args: {
 }): PatternsFeatureJson {
   const { window, timeZone, prefs, startUtc, endUtcExclusive, labelDays } = args;
   const threshold = prefs.patternThresholdPercent;
-  let patterns = selectPatternsForDisplay(demoPatterns(threshold));
-  if (patterns.length === 0) {
-    patterns = selectPatternsForDisplay(demoPatterns(15));
-  }
 
   const rangeStartYmd = formatYmdInZone(startUtc, timeZone);
   const rangeEndYmd = formatYmdInZone(new Date(endUtcExclusive.getTime() - 1), timeZone);
@@ -155,6 +186,11 @@ export function buildDemoPatternsFeatureJson(args: {
     rangeStartYmd,
     rangeEndYmd,
   );
+
+  let patterns = selectPatternsForDisplay(demoPatterns(threshold, window, featureContext));
+  if (patterns.length === 0) {
+    patterns = selectPatternsForDisplay(demoPatterns(15, window, featureContext));
+  }
 
   patterns = attachLearnMoreToPatterns(patterns, featureContext);
 

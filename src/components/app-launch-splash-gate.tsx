@@ -29,7 +29,7 @@ export function AppLaunchSplashGate({ children }: { children: React.ReactNode })
         >
           <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.06)_0%,rgba(255,255,255,0)_38%,rgba(8,32,39,0.1)_100%)]" />
           <div className="relative flex h-full items-center justify-center">
-            <div className="relative w-[220px] max-w-[70vw] sm:w-[270px]">
+            <div className="relative w-[180px] max-w-[64vw] sm:w-[220px]">
               <Image
                 src="/brand/align-wordmark-white.png"
                 alt="Align"

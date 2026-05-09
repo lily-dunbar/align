@@ -36,6 +36,7 @@ const DEFAULT_PAGE_SIZE = 100;
 const MAX_SYNC_PAGES = 200;
 /** Default rolling window for `/athlete/activities` (Strava `after` / `before` epoch seconds). */
 const DEFAULT_STRAVA_SYNC_LOOKBACK_DAYS = 30;
+const STRAVA_FIRST_SYNC_LOOKBACK_DAYS = 90;
 
 function stravaSyncLookbackDays(): number {
   const raw = process.env.STRAVA_SYNC_LOOKBACK_DAYS?.trim();
@@ -264,7 +265,9 @@ export async function syncStravaActivities(userId: string, lookbackDaysOverride?
   const lookbackDays =
     lookbackDaysOverride != null
       ? clampStravaLookbackDays(lookbackDaysOverride)
-      : stravaSyncLookbackDays();
+      : !latest
+        ? STRAVA_FIRST_SYNC_LOOKBACK_DAYS
+        : stravaSyncLookbackDays();
   const windowStart = new Date(now.getTime() - lookbackDays * 24 * 60 * 60 * 1000);
   const afterEpoch = epochSec(windowStart);
   const beforeEpoch = epochSec(now);

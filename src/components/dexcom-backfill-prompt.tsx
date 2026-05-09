@@ -85,7 +85,7 @@ export function DexcomBackfillPrompt({ className }: Props) {
             </span>
           </p>
           {error ? (
-            <p className="mt-2 text-xs font-medium text-red-800" role="alert">
+            <p className="mt-2 text-xs font-medium text-zinc-700" role="alert">
               {error}
             </p>
           ) : null}

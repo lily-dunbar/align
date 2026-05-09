@@ -22,17 +22,20 @@ const STEP_META: Record<OnboardingStepId, { title: string; emoji: string; blurb:
   dexcom: {
     title: "Dexcom Setup",
     emoji: "🩸",
-    blurb: "Connect your Dexcom account so Align can import glucose readings.",
+    blurb:
+      "Connect your Dexcom account so Align can import glucose readings. You'll briefly leave Align for Dexcom sign-in, then return here automatically.",
   },
   strava: {
     title: "Strava Setup",
     emoji: "🏃",
-    blurb: "Connect your Strava account so Align can import workouts.",
+    blurb:
+      "Connect your Strava account so Align can import workouts. You'll briefly leave Align for Strava authorization, then return to onboarding.",
   },
   apple_steps: {
     title: "Apple Activity Data",
     emoji: "🍎",
-    blurb: "Connect your Apple account so Align can import step count data.",
+    blurb:
+      "Set up Apple Steps via Shortcuts so Align can import step count data. You can do this now or complete it later in Settings.",
   },
   display: {
     title: "User Preferences",
@@ -60,10 +63,10 @@ type SkipAction = { type: "navigate"; step: OnboardingStepId } | { type: "finish
 
 /** Debug: advance without OAuth / without saving (except finish). */
 function getSkipAction(step: OnboardingStepId): SkipAction | null {
-  if (step === "success") return { type: "finish" };
-  const idx = STEPS.indexOf(step);
-  if (idx < 0 || idx >= STEPS.length - 1) return null;
-  return { type: "navigate", step: STEPS[idx + 1] };
+  if (step === "dexcom") return { type: "navigate", step: "strava" };
+  if (step === "strava") return { type: "navigate", step: "apple_steps" };
+  if (step === "apple_steps") return { type: "navigate", step: "display" };
+  return null;
 }
 
 const DISPLAY_KEYS: {
@@ -84,6 +87,9 @@ const btnSecondary =
 
 const linkSkip =
   "inline cursor-pointer border-0 bg-transparent p-0 text-sm font-medium text-zinc-400 underline decoration-zinc-300/80 underline-offset-[0.25em] transition hover:text-zinc-600 hover:decoration-zinc-500 disabled:pointer-events-none disabled:opacity-40";
+
+const SKIP_LABEL = "Skip for now — set up later in Settings";
+const APPLE_STEPS_SHORTCUT_URL = "https://www.icloud.com/shortcuts/74c89be7ecd044a4acaf750d1af5e006";
 
 function SettingsLink({
   href,
@@ -109,6 +115,8 @@ export function OnboardingWizard({ initialPrefs }: { initialPrefs: UserPreferenc
 
   const [prefs, setPrefs] = useState(initialPrefs);
   const [error, setError] = useState<string | null>(null);
+  const [stepsIngestUrl, setStepsIngestUrl] = useState<string | null>(null);
+  const [stepsUrlBusy, setStepsUrlBusy] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const goTo = useCallback(
@@ -199,17 +207,42 @@ export function OnboardingWizard({ initialPrefs }: { initialPrefs: UserPreferenc
     goTo(skipAction.step);
   }
 
+  async function loadAppleStepsUrl() {
+    setStepsUrlBusy(true);
+    setError(null);
+    try {
+      const resp = await fetch("/api/ingest/steps/token", {
+        method: "GET",
+        credentials: "include",
+      });
+      const json = (await resp.json()) as { ingestUrl?: string; error?: string };
+      if (!resp.ok || !json.ingestUrl) {
+        throw new Error(json.error ?? "Could not load Apple Steps URL");
+      }
+      setStepsIngestUrl(json.ingestUrl);
+      try {
+        await navigator.clipboard.writeText(json.ingestUrl);
+      } catch {
+        // Clipboard can fail in some browser contexts; URL is still shown below.
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load Apple Steps URL");
+    } finally {
+      setStepsUrlBusy(false);
+    }
+  }
+
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-3.5rem)] w-full max-w-3xl flex-col justify-center px-4 py-10 md:min-h-[calc(100dvh-4rem)] md:py-14">
       <h1 className="sr-only">Welcome to Align</h1>
 
       {error ? (
-        <p className="mx-auto mt-6 w-full max-w-2xl rounded-xl border border-red-200/80 bg-red-50/90 px-4 py-3 text-sm text-red-800">
+        <p className="mx-auto mt-6 w-full max-w-2xl rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] px-4 py-3 text-sm text-zinc-700 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]">
           {error}
         </p>
       ) : null}
       {!error && (stravaOauthError || dexcomOauthError) ? (
-        <p className="mx-auto mt-6 w-full max-w-2xl rounded-xl border border-red-200/80 bg-red-50/90 px-4 py-3 text-sm text-red-800">
+        <p className="mx-auto mt-6 w-full max-w-2xl rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] px-4 py-3 text-sm text-zinc-700 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]">
           {dexcomOauthError ? `Dexcom connection failed: ${dexcomOauthError}.` : null}
           {dexcomOauthError && stravaOauthError ? " " : null}
           {stravaOauthError ? `Strava connection failed: ${stravaOauthError}.` : null}
@@ -239,7 +272,7 @@ export function OnboardingWizard({ initialPrefs }: { initialPrefs: UserPreferenc
                 Previous
               </button>
               <SettingsLink href={`/api/integrations/dexcom/connect?return_to=${dexcomReturn}`}>
-                Next
+                Connect Dexcom
               </SettingsLink>
             </div>
             {skipAction ? (
@@ -250,7 +283,7 @@ export function OnboardingWizard({ initialPrefs }: { initialPrefs: UserPreferenc
                   disabled={pending}
                   onClick={() => handleSkip()}
                 >
-                  Skip
+                  {SKIP_LABEL}
                 </button>
               </div>
             ) : null}
@@ -264,7 +297,7 @@ export function OnboardingWizard({ initialPrefs }: { initialPrefs: UserPreferenc
                 Previous
               </button>
               <SettingsLink href={`/api/integrations/strava/connect?return_to=${stravaReturn}`}>
-                Next
+                Connect Strava
               </SettingsLink>
             </div>
             {skipAction ? (
@@ -275,7 +308,7 @@ export function OnboardingWizard({ initialPrefs }: { initialPrefs: UserPreferenc
                   disabled={pending}
                   onClick={() => handleSkip()}
                 >
-                  Skip
+                  {SKIP_LABEL}
                 </button>
               </div>
             ) : null}
@@ -283,7 +316,63 @@ export function OnboardingWizard({ initialPrefs }: { initialPrefs: UserPreferenc
         ) : null}
 
         {step === "apple_steps" ? (
-          <div className="mt-6">
+          <div className="mt-6 space-y-4">
+            <div className="rounded-xl border border-align-border/80 bg-white/70 px-4 py-3">
+              <p className="text-sm font-semibold text-zinc-900">Unique URL for your account</p>
+              <p className="mt-1 text-sm text-zinc-700">
+                Generate your personal Apple Steps URL now (it will also copy to your clipboard).
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className={btnSecondary}
+                  disabled={stepsUrlBusy}
+                  onClick={() => void loadAppleStepsUrl()}
+                >
+                  {stepsUrlBusy ? "Loading…" : "Generate + Copy URL"}
+                </button>
+              </div>
+              {stepsIngestUrl ? (
+                <code className="mt-2 block break-all rounded-md bg-zinc-100 px-2 py-1.5 text-xs text-zinc-800">
+                  {stepsIngestUrl}
+                </code>
+              ) : null}
+            </div>
+            <div className="rounded-xl border border-align-border/80 bg-align-subtle/40 px-4 py-3">
+              <p className="text-sm font-semibold text-zinc-900">Quick setup (about 3–5 minutes)</p>
+              <ol className="mt-2 list-inside list-decimal space-y-1.5 text-sm text-zinc-700">
+                <li>
+                  Install the Apple Shortcut:{" "}
+                  <a
+                    href={APPLE_STEPS_SHORTCUT_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium underline underline-offset-2"
+                  >
+                    Get Shortcut
+                  </a>
+                  .
+                </li>
+                <li>
+                  Tap <span className="font-medium">Generate + Copy URL</span> above to get your personal ingest URL.
+                </li>
+                <li>
+                  In iPhone Shortcuts, open the shortcut and paste your URL into{" "}
+                  <span className="font-medium">Get Contents of URL</span> with method{" "}
+                  <span className="font-medium">POST</span>.
+                </li>
+                <li>
+                  Set automation to run as often as you want step data (recommended:{" "}
+                  <span className="font-medium">7am</span> and <span className="font-medium">7pm</span>), or run it manually whenever needed.
+                </li>
+                <li>
+                  In Align, use Apple Steps <span className="font-medium">Pull</span> to refresh and see new data.
+                </li>
+              </ol>
+            </div>
+            <p className="text-sm text-zinc-600">
+              Need details while setting this up? You can open the full Apple Steps guide in Settings after onboarding.
+            </p>
             <div className="flex flex-wrap items-center justify-end gap-3">
               <button type="button" className={btnSecondary} onClick={() => goTo("strava")}>
                 Previous
@@ -300,7 +389,7 @@ export function OnboardingWizard({ initialPrefs }: { initialPrefs: UserPreferenc
                   disabled={pending}
                   onClick={() => handleSkip()}
                 >
-                  Skip
+                  {SKIP_LABEL}
                 </button>
               </div>
             ) : null}
@@ -368,7 +457,7 @@ export function OnboardingWizard({ initialPrefs }: { initialPrefs: UserPreferenc
                   disabled={pending}
                   onClick={() => handleSkip()}
                 >
-                  Skip
+                  {SKIP_LABEL}
                 </button>
               </div>
             ) : null}
@@ -447,7 +536,7 @@ export function OnboardingWizard({ initialPrefs }: { initialPrefs: UserPreferenc
                   disabled={pending}
                   onClick={() => handleSkip()}
                 >
-                  Skip
+                  {SKIP_LABEL}
                 </button>
               </div>
             ) : null}
@@ -472,7 +561,7 @@ export function OnboardingWizard({ initialPrefs }: { initialPrefs: UserPreferenc
                   disabled={pending}
                   onClick={() => handleSkip()}
                 >
-                  Skip
+                  {SKIP_LABEL}
                 </button>
               </div>
             ) : null}

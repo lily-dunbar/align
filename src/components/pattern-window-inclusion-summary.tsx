@@ -60,7 +60,7 @@ export function PatternWindowInclusionSummary({ inclusion, timeZone, labelDays }
         </div>
       ) : thinCgm === "thin" ? (
         <p
-          className="rounded-lg border border-amber-200/90 bg-amber-50/90 px-3 py-2 text-sm text-amber-950"
+          className={`${GRADIENT_NOTICE_CARD} text-sm leading-relaxed text-zinc-700`}
           role="status"
         >
           Not enough Dexcom coverage for a strong {labelDays}-day view—only{" "}

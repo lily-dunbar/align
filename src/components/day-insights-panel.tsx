@@ -635,7 +635,7 @@ export function DayInsightsPanel({ dateYmd }: Props) {
         </h2>
       </div>
       {error ? (
-        <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <p className="mt-3 rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] px-3 py-2 text-sm text-zinc-700 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]">
           {error}
         </p>
       ) : null}

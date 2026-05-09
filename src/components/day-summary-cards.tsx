@@ -73,7 +73,7 @@ export function DaySummaryCards({ dateYmd }: Props) {
 
   if (error) {
     return (
-      <section className="w-full rounded-lg border border-red-200 bg-red-50 p-3 text-left text-sm text-red-700">
+      <section className="w-full rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] p-3 text-left text-sm text-zinc-700 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]">
         Summary load error: {error}
       </section>
     );

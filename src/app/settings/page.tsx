@@ -20,7 +20,10 @@ import {
   stravaTokens,
   userDisplayPreferences,
 } from "@/db/schema";
-import { isDeveloperSettingsEnabled } from "@/lib/developer-settings";
+import {
+  canUserPatchDeveloperDemoMode,
+  isDeveloperSettingsEnabled,
+} from "@/lib/developer-settings";
 import { needsOnboarding } from "@/lib/onboarding";
 import { getUserPreferences } from "@/lib/user-display-preferences";
 import { DEXCOM_SHARE_UI_HIDDEN_COOKIE } from "@/lib/dexcom/share-ui-cookie";
@@ -130,6 +133,7 @@ export default async function SettingsPage({
   }
 
   const showDeveloperSettings = isDeveloperSettingsEnabled();
+  const canSeeDeveloperMode = canUserPatchDeveloperDemoMode(userId);
 
   let userPrefs = await getUserPreferences(userId);
   const dexcomConnected = !!dexcomRow || (shareDexcom && !shareUiDismissed);
@@ -168,22 +172,22 @@ export default async function SettingsPage({
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col gap-8 bg-background px-4 py-8 md:max-w-4xl md:px-8 md:py-10">
       {dexcomCb === "connected" ? (
-        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+        <p className="rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] px-3 py-2 text-sm text-zinc-700 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]">
           Dexcom connected successfully.
         </p>
       ) : null}
       {stravaCb === "connected" ? (
-        <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+        <p className="rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] px-3 py-2 text-sm text-zinc-700 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]">
           Strava connected successfully.
         </p>
       ) : null}
       {dexcomErr ? (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <p className="rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] px-3 py-2 text-sm text-zinc-700 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]">
           Dexcom: {dexcomErr}
         </p>
       ) : null}
       {stravaErr ? (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <p className="rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] px-3 py-2 text-sm text-zinc-700 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]">
           Strava: {stravaErr}
         </p>
       ) : null}
@@ -202,18 +206,12 @@ export default async function SettingsPage({
 
       <SettingsAccountCard />
 
-      {showDeveloperSettings ? (
+      {showDeveloperSettings && canSeeDeveloperMode ? (
         <SettingsDeveloperCard
           initialDeveloperDemoMode={developerPrefsRow?.developerDemoMode ?? false}
           initialOnboardingCompleted={developerPrefsRow?.onboardingCompleted ?? true}
         />
-      ) : (
-        <SettingsDeveloperCard
-          demoOnly
-          initialDeveloperDemoMode={developerPrefsRow?.developerDemoMode ?? false}
-          initialOnboardingCompleted={developerPrefsRow?.onboardingCompleted ?? true}
-        />
-      )}
+      ) : null}
     </main>
   );
 }

@@ -11,13 +11,14 @@ function readBrowserOrigin(): string {
 
 const SETTINGS_RETURN = encodeURIComponent("/settings");
 const primaryButtonClass =
-  "inline-flex min-w-[6.75rem] items-center justify-center rounded-full bg-align-forest px-3 py-1.5 text-sm font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex min-h-10 min-w-[6.75rem] items-center justify-center rounded-full bg-align-forest px-3 py-1.5 text-sm font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted disabled:cursor-not-allowed disabled:opacity-50";
 const secondaryButtonClass =
-  "inline-flex min-w-[6.75rem] items-center justify-center rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-800 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex min-h-10 min-w-[6.75rem] items-center justify-center rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-800 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50";
 const secondaryIconButtonClass =
   "inline-flex min-h-10 min-w-10 items-center justify-center rounded-full border border-zinc-200 bg-white px-2 py-1 text-sm leading-none text-zinc-800 transition hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50";
 /** Same footprint as Connect (`primaryButtonClass`) — Dexcom/Strava Sync and Apple Steps Pull. */
 const syncButtonClass = primaryButtonClass;
+const APPLE_STEPS_SHORTCUT_URL = "https://www.icloud.com/shortcuts/02888480a1514ea2afd0fd12288c4244";
 
 function formatWhen(iso: string | null) {
   if (!iso) return "—";
@@ -469,15 +470,16 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
     }
   }
 
-  async function syncDexcom(lookbackDays = 30) {
-    setBusy(`sync-dexcom-${lookbackDays}`);
+  async function syncDexcom(lookbackDays?: number) {
+    setBusy(`sync-dexcom-${lookbackDays ?? "auto"}`);
     setNotice(null);
     setOpenOverflow(null);
     try {
+      const body = lookbackDays == null ? {} : { lookbackDays };
       const resp = await fetch("/api/integrations/dexcom/sync?format=json", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lookbackDays }),
+        body: JSON.stringify(body),
       });
       const json = (await resp.json()) as {
         error?: string;
@@ -498,15 +500,16 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
     }
   }
 
-  async function syncStrava(lookbackDays = 30) {
-    setBusy(`sync-strava-${lookbackDays}`);
+  async function syncStrava(lookbackDays?: number) {
+    setBusy(`sync-strava-${lookbackDays ?? "auto"}`);
     setNotice(null);
     setOpenOverflow(null);
     try {
+      const body = lookbackDays == null ? {} : { lookbackDays };
       const resp = await fetch("/api/integrations/strava/sync?format=json", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lookbackDays }),
+        body: JSON.stringify(body),
       });
       const json = (await resp.json()) as {
         error?: string;
@@ -754,7 +757,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
 
         {/* Apple Steps */}
         <div className="rounded-xl border border-zinc-100 bg-zinc-50/80 p-4">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-col gap-3">
             <div className="min-w-0">
               <p className="font-medium text-zinc-900">Apple Steps</p>
               <p className="mt-1 text-xs text-zinc-500">
@@ -787,7 +790,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 )}
               </p>
             </div>
-            <div className="relative flex shrink-0 items-start justify-end gap-2">
+            <div className="relative flex w-full items-start gap-2">
               {!stepsDisplay.connected ? (
                 <button
                   type="button"
@@ -890,6 +893,18 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
               {stepsSetupOpen ? (
                 <div id={stepsSetupPanelId} className="mt-2 space-y-2">
                   <p className="font-semibold text-zinc-900">Shortcuts setup (works for every user)</p>
+                  <p>
+                    Start by installing this shortcut on iPhone:{" "}
+                    <a
+                      href={APPLE_STEPS_SHORTCUT_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium underline underline-offset-2"
+                    >
+                      Get Shortcut
+                    </a>
+                    .
+                  </p>
                   <p>
                     Copy <span className="font-medium">your</span> URL — it ties steps to this account only. Other
                     people sign in, connect here, and put <span className="font-medium">their</span> URL in their

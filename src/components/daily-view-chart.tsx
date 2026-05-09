@@ -141,6 +141,8 @@ const STEP_Y_MAX = GLUCOSE_FLOOR;
 const STEP_BAR_MIN_FRACTION = 0.14;
 const BG_AXIS_TICKS = [60, 120, 180, 240, 300] as const;
 const MOBILE_BG_AXIS_WIDTH = 46;
+const MOBILE_AXIS_LABEL_TOP_PAD_PCT = 6;
+const MOBILE_AXIS_LABEL_BOTTOM_PAD_PCT = 4;
 
 /** Sleep window shading; only overlaps real sleep vs viewed day (handles midnight crossing). */
 const SLEEP_BAND_FILL = "#DAE6E5";
@@ -799,7 +801,7 @@ export function DailyViewChart({ dateYmd }: Props) {
 
   if (error) {
     return (
-      <section className="w-full rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+      <section className="w-full rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] p-4 text-sm text-zinc-700 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]">
         Daily chart error: {error}
       </section>
     );
@@ -812,10 +814,6 @@ export function DailyViewChart({ dateYmd }: Props) {
   const tz = payload.day.timeZone;
   const low = payload.aggregates.tir.targetLowMgdl;
   const high = payload.aggregates.tir.targetHighMgdl;
-  const totalSteps =
-    typeof payload.aggregates.totalSteps === "number" && Number.isFinite(payload.aggregates.totalSteps)
-      ? payload.aggregates.totalSteps
-      : payload.streams.hourlySteps.reduce((sum, s) => sum + s.stepCount, 0);
   const showSteps = prefs?.showSteps ?? true;
   const showActivity = prefs?.showActivity ?? true;
   const showSleep = prefs?.showSleep ?? true;
@@ -831,7 +829,7 @@ export function DailyViewChart({ dateYmd }: Props) {
   const xTicks = timelineTicks(effectiveTimelineWindow, xDomain);
 
   const chartMargins = {
-    top: 36,
+    top: 42,
     right: isMobileScreen ? 8 : 12,
     bottom: 8,
     left: isMobileScreen ? 0 : isVerySmallScreen ? 0 : 2,
@@ -844,9 +842,6 @@ export function DailyViewChart({ dateYmd }: Props) {
           <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
             Daily View
           </h2>
-          {showSteps ? (
-            <p className="mt-1 text-xs text-zinc-600">Steps: {totalSteps.toLocaleString()}</p>
-          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {!isDemoRoute ? (
@@ -856,7 +851,7 @@ export function DailyViewChart({ dateYmd }: Props) {
               onClick={() => void reloadLatestData()}
               className="inline-flex min-h-9 items-center justify-center rounded-full border border-align-border/90 bg-white px-3 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-black/[0.03] transition hover:bg-align-subtle disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {reloadBusy ? "Reloading…" : "Reload data"}
+              {reloadBusy ? "Refreshing…" : "Refresh"}
             </button>
           ) : null}
           {(
@@ -903,14 +898,18 @@ export function DailyViewChart({ dateYmd }: Props) {
               }`}
               aria-hidden
             >
-              <div className="relative h-full w-full pt-9 pb-3">
+              <div className="relative h-full w-full pt-9 pb-4">
                 {BG_AXIS_TICKS.map((tick) => {
                   const topPct = ((300 - tick) / (300 - STEP_Y_MIN)) * 100;
+                  const clampedTopPct = Math.min(
+                    100 - MOBILE_AXIS_LABEL_BOTTOM_PAD_PCT,
+                    Math.max(MOBILE_AXIS_LABEL_TOP_PAD_PCT, topPct),
+                  );
                   return (
                     <span
                       key={tick}
                       className="absolute right-1 -translate-y-1/2 text-[10px] font-semibold tabular-nums text-zinc-600"
-                      style={{ top: `${topPct}%` }}
+                      style={{ top: `${clampedTopPct}%` }}
                     >
                       {tick}
                     </span>

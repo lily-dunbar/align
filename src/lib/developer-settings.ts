@@ -5,7 +5,21 @@ export function isDeveloperSettingsEnabled(): boolean {
   return v === "1" || v === "true" || v === "yes";
 }
 
-/** Any signed-in account may turn demo mode on/off (see Settings → Demo preview). `userId` kept for future policy hooks. */
-export function canUserPatchDeveloperDemoMode(_userId: string): boolean {
-  return true;
+function parseDeveloperUserIdAllowlist(): Set<string> {
+  const raw =
+    process.env.DEVELOPER_MODE_USER_IDS ??
+    process.env.DEV_MODE_USER_IDS ??
+    process.env.DEVELOPER_USER_IDS ??
+    "";
+  const ids = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return new Set(ids);
+}
+
+/** Only allowlisted accounts may access Developer/Demo mode controls. */
+export function canUserPatchDeveloperDemoMode(userId: string): boolean {
+  const allow = parseDeveloperUserIdAllowlist();
+  return allow.has(userId);
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { useEffectiveTimeZone } from "@/hooks/use-effective-timezone";
@@ -35,7 +35,6 @@ export function DateNav({ initialDateYmd }: Props) {
   const pathname = usePathname();
   const params = useSearchParams();
   const effectiveTz = useEffectiveTimeZone();
-  const dateInputRef = useRef<HTMLInputElement>(null);
   const selectedDate = useResolvedDayYmd(initialDateYmd);
   const todayYmd = getLocalCalendarYmd(new Date(), effectiveTz);
   const isAtLatestDay = selectedDate >= todayYmd;
@@ -68,48 +67,32 @@ export function DateNav({ initialDateYmd }: Props) {
             <div className="grid min-w-0 w-full max-w-md grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1.5">
               <button
                 type="button"
-                className="flex min-h-11 shrink-0 items-center justify-center rounded-full border border-transparent px-2.5 py-2 text-sm text-zinc-700 transition hover:bg-align-subtle sm:px-3"
+                className="touch-manipulation flex min-h-12 min-w-[2.75rem] shrink-0 items-center justify-center rounded-full border border-transparent px-2.5 py-2 text-sm text-zinc-700 transition hover:bg-align-subtle active:bg-align-subtle sm:px-3"
                 onClick={() => setDate(addDays(selectedDate, -1))}
               >
                 ← Prev
               </button>
-              <label className="flex min-h-11 min-w-0 w-full items-center gap-2 text-sm">
+              {/* Overlay native date input so taps open the picker on mobile (showPicker is flaky). */}
+              <div className="relative isolate flex min-h-12 min-w-0 w-full touch-manipulation items-center justify-center rounded-xl border border-align-border bg-white px-3 py-2.5 text-center text-sm text-zinc-800 shadow-sm shadow-black/5">
                 <input
-                  ref={dateInputRef}
                   type="date"
                   value={selectedDate}
                   max={todayYmd}
                   onChange={(e) => setDate(e.target.value)}
-                  className="sr-only"
-                  aria-hidden
-                  tabIndex={-1}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const input = dateInputRef.current;
-                    if (!input) return;
-                    const pickerInput = input as HTMLInputElement & {
-                      showPicker?: () => void;
-                    };
-                    if (typeof pickerInput.showPicker === "function") {
-                      pickerInput.showPicker();
-                    } else {
-                      input.focus();
-                    }
-                  }}
-                  className="min-h-11 w-full min-w-0 rounded-xl border border-align-border bg-white px-3 py-2 text-center text-sm text-zinc-800 shadow-sm shadow-black/5"
+                  className="absolute inset-0 z-[1] h-full min-h-12 w-full cursor-pointer opacity-0 [color-scheme:light]"
                   aria-label="Choose date"
-                >
-                  <span className="block truncate">{dateLabel}</span>
-                </button>
-              </label>
+                  style={{ fontSize: "max(16px, 1rem)" }}
+                />
+                <span className="pointer-events-none relative z-0 block max-w-full truncate font-medium">
+                  {dateLabel}
+                </span>
+              </div>
               <button
                 type="button"
                 disabled={isAtLatestDay}
                 aria-disabled={isAtLatestDay}
                 title={isAtLatestDay ? "Already on the latest day you can view" : undefined}
-                className="flex min-h-11 shrink-0 items-center justify-center rounded-full border border-transparent px-2.5 py-2 text-sm text-zinc-700 transition hover:bg-align-subtle disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent sm:px-3"
+                className="touch-manipulation flex min-h-12 min-w-[2.75rem] shrink-0 items-center justify-center rounded-full border border-transparent px-2.5 py-2 text-sm text-zinc-700 transition hover:bg-align-subtle active:bg-align-subtle disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent sm:px-3"
                 onClick={() => setDate(addDays(selectedDate, 1))}
               >
                 Next →

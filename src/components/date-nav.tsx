@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useId, useRef, type MouseEvent } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
+import { DayDatePickerPopover } from "@/components/day-date-picker-popover";
 import { useEffectiveTimeZone } from "@/hooks/use-effective-timezone";
-import { OPEN_MANUAL_MODAL_EVENT } from "@/lib/day-view-events";
+import { OPEN_DAY_DATE_PICKER_EVENT, OPEN_MANUAL_MODAL_EVENT } from "@/lib/day-view-events";
 import { getLocalCalendarYmd } from "@/lib/local-calendar-ymd";
 import { useResolvedDayYmd } from "@/lib/use-resolved-day-ymd";
 
@@ -90,27 +91,28 @@ export function DateNav({ initialDateYmd }: Props) {
   const pathname = usePathname();
   const params = useSearchParams();
   const effectiveTz = useEffectiveTimeZone();
-  const dateInputId = useId();
-  const dateInputRef = useRef<HTMLInputElement>(null);
+  const pickerPanelId = useId();
+  const [pickerOpen, setPickerOpen] = useState(false);
   const selectedDate = useResolvedDayYmd(initialDateYmd);
   const todayYmd = getLocalCalendarYmd(new Date(), effectiveTz);
   const isAtLatestDay = selectedDate >= todayYmd;
   const dateLabel = formatDateLabel(selectedDate, todayYmd);
 
-  function openNativeDatePicker(e: MouseEvent<HTMLLabelElement>) {
-    const input = dateInputRef.current;
-    if (!input) return;
-    if (typeof input.showPicker === "function") {
-      try {
-        e.preventDefault();
-        input.showPicker();
-      } catch {
-        input.click();
-      }
-      return;
+  const openPicker = useCallback(() => {
+    setPickerOpen(true);
+  }, []);
+
+  useEffect(() => {
+    function onOpenDatePickerRequest() {
+      queueMicrotask(() => {
+        setPickerOpen(true);
+      });
     }
-    /* No showPicker: label’s default behavior activates the hidden date input. */
-  }
+    window.addEventListener(OPEN_DAY_DATE_PICKER_EVENT, onOpenDatePickerRequest);
+    return () => {
+      window.removeEventListener(OPEN_DAY_DATE_PICKER_EVENT, onOpenDatePickerRequest);
+    };
+  }, []);
 
   useEffect(() => {
     if (selectedDate > todayYmd) {
@@ -145,27 +147,28 @@ export function DateNav({ initialDateYmd }: Props) {
           </button>
 
           <div className="relative flex min-h-10 min-w-0 flex-1 justify-center touch-manipulation">
-            <input
-              ref={dateInputRef}
-              id={dateInputId}
-              type="date"
-              value={selectedDate}
-              max={todayYmd}
-              onChange={(e) => setDate(e.target.value)}
-              className="sr-only [color-scheme:light]"
-              aria-label="Choose date"
-              style={{ fontSize: "max(16px, 1rem)" }}
-            />
-            <label
-              htmlFor={dateInputId}
-              onClick={openNativeDatePicker}
+            <button
+              type="button"
+              onClick={() => openPicker()}
               className="inline-flex min-h-10 min-w-0 max-w-full cursor-pointer select-none items-center justify-center gap-2 rounded-full px-3 py-2 text-center transition hover:bg-align-subtle/90 active:bg-align-subtle"
+              aria-expanded={pickerOpen}
+              aria-haspopup="dialog"
+              aria-controls={pickerPanelId}
+              aria-label={`Choose date, ${dateLabel}`}
             >
-              <CalendarGlyph className="h-4 w-4 shrink-0 text-zinc-600" aria-hidden />
+              <CalendarGlyph className="h-4 w-4 shrink-0 text-align-forest/80" aria-hidden />
               <span className="truncate text-sm font-semibold tracking-tight text-zinc-800">
                 {dateLabel}
               </span>
-            </label>
+            </button>
+            <DayDatePickerPopover
+              id={pickerPanelId}
+              open={pickerOpen}
+              onClose={() => setPickerOpen(false)}
+              selectedYmd={selectedDate}
+              maxYmd={todayYmd}
+              onSelectYmd={setDate}
+            />
           </div>
 
           <button

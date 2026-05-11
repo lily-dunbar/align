@@ -1,4 +1,5 @@
 import { PatternsInsightsPanel } from "@/components/patterns-insights-panel";
+import { PatternsRegenerateButton } from "@/components/patterns-regenerate-button";
 import { getPatternsFeatureJsonForIso } from "@/lib/patterns/feature-json";
 import type { PatternWindow } from "@/lib/patterns/types";
 import { uiPanelSurface } from "@/lib/ui-surfaces";
@@ -23,6 +24,7 @@ export async function PatternsTakeawaysSection({
             Insights
           </h2>
         </div>
+        <PatternsRegenerateButton patternsDataUserId={userId} />
       </div>
       <PatternsInsightsPanel data={feature} />
     </div>

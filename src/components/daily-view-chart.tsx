@@ -705,17 +705,21 @@ export function DailyViewChart({ dateYmd }: Props) {
         </div>
       </div>
       <div
-        className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-align-border-soft/80 pb-4 text-sm font-medium text-zinc-700"
+        className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b border-align-border-soft/50 pb-3 text-[11px] font-normal leading-snug tracking-wide text-zinc-500"
         aria-label="Chart legend"
       >
-        <span className="inline-flex items-center gap-2.5">
-          <span className="h-1 w-9 shrink-0 rounded-full bg-align-chart-glucose" aria-hidden />
-          Glucose (mg/dL)
+        <span className="inline-flex items-center gap-2">
+          <span
+            className="size-2.5 shrink-0 rounded-full bg-align-chart-glucose/90 ring-1 ring-black/[0.08]"
+            aria-hidden
+          />
+          <span className="text-zinc-500">Glucose</span>
+          <span className="text-zinc-400">mg/dL</span>
         </span>
         {showSleep ? (
-          <span className="inline-flex items-center gap-2.5">
+          <span className="inline-flex items-center gap-2">
             <span
-              className="h-1 w-9 shrink-0 rounded-full border border-black/[0.06] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)]"
+              className="size-2.5 shrink-0 rounded-full border border-zinc-200/80 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.25)]"
               style={{ backgroundColor: CHART_SLEEP_LEGEND_SWATCH }}
               aria-hidden
             />
@@ -723,9 +727,9 @@ export function DailyViewChart({ dateYmd }: Props) {
           </span>
         ) : null}
         {showFood ? (
-          <span className="inline-flex items-center gap-2.5">
+          <span className="inline-flex items-center gap-2">
             <span
-              className="h-1 w-9 shrink-0 rounded-full border border-black/[0.06] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)]"
+              className="size-2.5 shrink-0 rounded-full border border-zinc-200/80 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.25)]"
               style={{ backgroundColor: CHART_FOOD_LEGEND_SWATCH }}
               aria-hidden
             />
@@ -733,9 +737,9 @@ export function DailyViewChart({ dateYmd }: Props) {
           </span>
         ) : null}
         {showActivity ? (
-          <span className="inline-flex items-center gap-2.5">
+          <span className="inline-flex items-center gap-2">
             <span
-              className="h-1 w-9 shrink-0 rounded-full border border-black/[0.06]"
+              className="size-2.5 shrink-0 rounded-full border border-zinc-200/70"
               style={{ backgroundColor: CHART_WORKOUT_LEGEND_SWATCH }}
               aria-hidden
             />
@@ -743,10 +747,10 @@ export function DailyViewChart({ dateYmd }: Props) {
           </span>
         ) : null}
         {showSteps ? (
-          <span className="inline-flex items-center gap-2.5">
+          <span className="inline-flex items-center gap-2">
             <span
-              className="h-1 w-9 shrink-0 rounded-full border border-black/[0.06]"
-              style={{ backgroundColor: CHART_STEPS_BAR_FILL, opacity: 0.92 }}
+              className="size-2.5 shrink-0 rounded-full border border-zinc-200/70"
+              style={{ backgroundColor: CHART_STEPS_BAR_FILL, opacity: 0.75 }}
               aria-hidden
             />
             Steps

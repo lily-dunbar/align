@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { revalidateTag, unstable_cache } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 import { DEMO_DAY_INSIGHTS } from "@/lib/demo/demo-day-insights";
@@ -8,7 +9,22 @@ import { isDemoRequest } from "@/lib/demo/request-mode";
 import { buildDailySparkInsight } from "@/lib/day-insight-daily-spark";
 import { loadDayInsightSnapshot } from "@/lib/day-insight-context";
 import { digestDayInsightSnapshot } from "@/lib/day-insight-digest";
-import { fetchDayInsightsWithClaude } from "@/lib/day-insights-llm";
+import { fetchDayInsightsWithClaude, type DayInsightsLlmOutcome } from "@/lib/day-insights-llm";
+
+function dayInsightsLlmCacheTag(userId: string, date: string, timeZone: string) {
+  return `day-insights-llm:${userId}:${date}:${timeZone}`;
+}
+
+function getCachedDayInsightsLlmOutcome(userId: string, date: string, timeZone: string) {
+  return unstable_cache(
+    async (): Promise<DayInsightsLlmOutcome> => {
+      const snap = await loadDayInsightSnapshot(userId, date, timeZone);
+      return fetchDayInsightsWithClaude(snap);
+    },
+    ["align-day-insights-llm-v1", userId, date, timeZone],
+    { tags: [dayInsightsLlmCacheTag(userId, date, timeZone)], revalidate: false },
+  );
+}
 
 export async function GET(request: NextRequest) {
   const { userId } = await auth();
@@ -56,7 +72,12 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const outcome = await fetchDayInsightsWithClaude(snapshot);
+    const forceRefresh = url.searchParams.get("refresh") === "1";
+    if (forceRefresh) {
+      revalidateTag(dayInsightsLlmCacheTag(effectiveUserId, date, timeZone), "max");
+    }
+
+    const outcome = await getCachedDayInsightsLlmOutcome(effectiveUserId, date, timeZone)();
 
     if (outcome.kind === "unavailable") {
       return NextResponse.json({

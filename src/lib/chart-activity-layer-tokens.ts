@@ -39,6 +39,6 @@ export const PANEL_KIND_BADGE_CLASS = {
     "border border-[color:rgb(122_158_154_/_0.55)] bg-[color:rgb(218_230_229_/_0.92)] text-[#115e59]",
 } as const;
 
-/** Carbs chip when logged — same food band family as chart */
+/** Carbs chip when logged — neutral so it doesn’t compete with food band / chart greens */
 export const PANEL_FOOD_CARBS_CHIP_LOGGED =
-  "border border-[color:rgb(178_186_110_/_0.6)] bg-[color:rgb(239_241_205_/_0.9)] text-[#365314]";
+  "border border-zinc-200/90 bg-zinc-100/90 text-zinc-600";

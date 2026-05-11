@@ -190,19 +190,23 @@ export function SettingsTargetsCard() {
               </span>
             </div>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-3.5">
-            <span className="text-sm text-zinc-800">
-              Steps / day ({TARGET_STEPS_MIN.toLocaleString()}–{TARGET_STEPS_MAX.toLocaleString()})
-            </span>
+          <div className="flex flex-wrap items-start justify-between gap-4 px-4 py-3.5">
+            <div className="min-w-0 pr-2">
+              <span className="block text-sm font-medium text-zinc-800">Steps / day</span>
+              <p className="mt-0.5 text-xs tabular-nums text-zinc-500">
+                ({TARGET_STEPS_MIN.toLocaleString()} - {TARGET_STEPS_MAX.toLocaleString()})
+              </p>
+            </div>
             <input
               type="number"
-              className="w-28 rounded-lg border border-zinc-300 px-3 py-2 text-right text-sm tabular-nums"
+              className="w-32 shrink-0 rounded-lg border border-zinc-300 px-3 py-2 text-right text-sm tabular-nums"
               min={TARGET_STEPS_MIN}
               max={TARGET_STEPS_MAX}
               step={500}
               value={prefs.targetStepsPerDay}
               onChange={(e) => update("targetStepsPerDay", Number(e.target.value))}
               disabled={saving}
+              aria-label="Steps per day goal"
             />
           </div>
 

@@ -11,6 +11,7 @@ import { buildSleepRecurrenceNotes, parseSleepRecurrenceMeta } from "@/lib/manua
 import { METERS_PER_MILE } from "@/lib/distance-units";
 import {
   DAY_DATA_CHANGED_EVENT,
+  OPEN_DAY_DATE_PICKER_EVENT,
   OPEN_MANUAL_MODAL_EVENT,
   type OpenManualModalDetail,
 } from "@/lib/day-view-events";
@@ -766,7 +767,16 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
               </h2>
               <p className="mt-1 text-sm text-zinc-600">
                 Sleep, movement, and food for{" "}
-                <span className="font-semibold text-align-forest">{formatHeaderDate(resolvedDateYmd)}</span>
+                <button
+                  type="button"
+                  className="inline font-semibold text-align-forest underline decoration-align-forest/35 underline-offset-2 outline-none transition hover:text-align-forest-muted hover:decoration-align-forest/55 focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-align-forest/30 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent(OPEN_DAY_DATE_PICKER_EVENT));
+                  }}
+                  aria-label="Choose a different date"
+                >
+                  {formatHeaderDate(resolvedDateYmd)}
+                </button>
               </p>
             </div>
           </div>
@@ -952,7 +962,13 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                 ) : null}
 
                 {tab === "activity" ? (
-                  <>
+                  <form
+                    className="space-y-5"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void createWorkout();
+                    }}
+                  >
                     <div className="space-y-2">
                       <FieldLabel>Type</FieldLabel>
                       <select
@@ -1026,14 +1042,13 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
                       ) : null}
                     </div>
                     <button
-                      type="button"
+                      type="submit"
                       className="w-full rounded-full bg-align-forest py-3 text-sm font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-align-forest"
                       disabled={isActionBusy}
-                      onClick={() => void createWorkout()}
                     >
                       {actionBusy === "create-activity" ? "Saving…" : "Save activity"}
                     </button>
-                  </>
+                  </form>
                 ) : null}
 
                 {tab === "food" ? (

@@ -28,7 +28,12 @@ type DaySummaryResponse = {
 type InsightDigestResponse = {
   ok?: boolean;
   digest?: string;
+  unchanged?: boolean;
 };
+
+function sessionInsightDigestKey(dateYmd: string, timeZone: string) {
+  return `align:day-insights-snapshot-digest:${dateYmd}:${timeZone}`;
+}
 
 type Notice = {
   id: "steps-goal" | "tir-goal" | "new-insight";
@@ -70,6 +75,17 @@ export function HomeGoalNotifications({ dateYmd }: Props) {
 
   const load = useCallback(async () => {
     try {
+      let sinceDigest = "";
+      try {
+        sinceDigest = sessionStorage.getItem(sessionInsightDigestKey(resolvedDateYmd, effectiveTz)) ?? "";
+      } catch {
+        sinceDigest = "";
+      }
+      const insightQs =
+        sinceDigest !== ""
+          ? `&sinceDigest=${encodeURIComponent(sinceDigest)}`
+          : "";
+
       const [dayResp, insightResp] = await Promise.all([
         fetch(
           `/api/day?date=${encodeURIComponent(resolvedDateYmd)}&timeZone=${encodeURIComponent(effectiveTz)}`,
@@ -78,7 +94,7 @@ export function HomeGoalNotifications({ dateYmd }: Props) {
           },
         ),
         fetch(
-          `/api/day/insights?date=${encodeURIComponent(resolvedDateYmd)}&timeZone=${encodeURIComponent(effectiveTz)}`,
+          `/api/day/insights?date=${encodeURIComponent(resolvedDateYmd)}&timeZone=${encodeURIComponent(effectiveTz)}${insightQs}`,
           {
             cache: "no-store",
           },
@@ -91,6 +107,13 @@ export function HomeGoalNotifications({ dateYmd }: Props) {
         ? ((await insightResp.json()) as InsightDigestResponse)
         : ({} as InsightDigestResponse);
       const nextDigest = insightJson.digest ?? null;
+      if (nextDigest) {
+        try {
+          sessionStorage.setItem(sessionInsightDigestKey(resolvedDateYmd, effectiveTz), nextDigest);
+        } catch {
+          /* ignore */
+        }
+      }
       setInsightDigest(nextDigest);
 
       const next: Notice[] = [];

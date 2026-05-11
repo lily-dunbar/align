@@ -1,5 +1,7 @@
 import "server-only";
 
+import { formatInTimeZone } from "date-fns-tz";
+import { unstable_cache } from "next/cache";
 import { cache } from "react";
 
 import { buildDemoPatternsFeatureJson } from "@/lib/demo/build-demo-patterns-api";
@@ -125,6 +127,25 @@ async function getPatternsFeatureJsonImpl(
       labelDays,
     });
   }
+
+  /** One LLM+stats build per user / window / zone / local calendar day; cleared via `revalidateTag`. */
+  const anchorYmd = formatInTimeZone(at, timeZone, "yyyy-MM-dd");
+  const run = unstable_cache(
+    async () => computePatternsFeatureJsonForUser(userId, window, timeZone, at),
+    ["align-patterns-feature-v1", userId, window, timeZone, anchorYmd],
+    { tags: [`patterns-insights:${userId}`], revalidate: false },
+  );
+  return run();
+}
+
+async function computePatternsFeatureJsonForUser(
+  userId: string,
+  window: PatternWindow,
+  timeZone: string,
+  at: Date,
+): Promise<PatternsFeatureJson> {
+  const prefs = await getUserPreferences(userId);
+  const { startUtc, endUtcExclusive, labelDays } = rollingRangeUtc(window, at);
 
   const featureContext = await loadPatternFeatureContext(
     userId,

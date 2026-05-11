@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 import { ToggleSwitch } from "@/components/toggle-switch";
 import { Skeleton } from "@/components/skeleton";
+import { uiPanelSurface } from "@/lib/ui-surfaces";
 import type { DisplayPreferences, UserPreferences } from "@/lib/user-display-preferences";
 
 const TIMELINE_ROWS: {
@@ -98,7 +99,7 @@ export function DisplayPreferencesCard() {
   }
 
   return (
-    <section className="w-full rounded-2xl border border-align-border/90 bg-white/90 p-5 ring-1 ring-black/[0.03]">
+    <section className={`w-full p-5 ${uiPanelSurface}`}>
       <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
         Display
       </h2>

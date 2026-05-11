@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { DAY_DATA_CHANGED_EVENT } from "@/lib/day-view-events";
+import { uiSoftCallout } from "@/lib/ui-surfaces";
 
 type Props = {
   className?: string;
@@ -62,8 +63,7 @@ export function DexcomBackfillPrompt({ className }: Props) {
     }
   }
 
-  const cardShell =
-    "w-full rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] px-4 py-3 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]";
+  const cardShell = `w-full px-4 py-3 ${uiSoftCallout}`;
 
   return (
     <aside

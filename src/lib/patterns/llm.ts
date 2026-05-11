@@ -30,7 +30,9 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 function normalizeType(raw: unknown): PatternTypeLabel | null {
   if (typeof raw !== "string") return null;
   const u = raw.trim().toLowerCase();
-  if (u === "temporal") return "Temporal";
+  if (u === "temporal" || u === "meal" || u === "meals" || u === "food_timing" || u === "nutrition_timing") {
+    return "Temporal";
+  }
   if (u === "steps" || u === "step" || u === "day_activity" || u === "activity_days") {
     return "Steps";
   }

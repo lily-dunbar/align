@@ -47,7 +47,7 @@ export default async function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} ${alignSerif.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col bg-background">
+      <body className="flex min-h-full flex-col bg-background text-foreground [font-feature-settings:'ss01']">
         <ClerkProvider>
           <AppLaunchSplashGate>
             <AppHeader devModeBanner={devModeBanner} />

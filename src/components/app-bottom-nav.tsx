@@ -129,7 +129,7 @@ export function AppBottomNav() {
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-5 pb-[calc(0.45rem+env(safe-area-inset-bottom,0px))]">
       <nav
-        className="pointer-events-auto w-full max-w-2xl rounded-full border border-align-border/90 bg-white/90 py-1.5 pl-2 pr-2 shadow-[0_8px_32px_-10px_rgba(27,77,67,0.16)] backdrop-blur-xl supports-[backdrop-filter]:bg-white/85"
+        className="pointer-events-auto w-full max-w-2xl rounded-[1.35rem] border border-align-border/80 bg-white/95 py-1.5 pl-2 pr-2 shadow-lg shadow-black/[0.06] backdrop-blur-md supports-[backdrop-filter]:bg-white/90"
         aria-label="Main navigation"
       >
         <div className="grid grid-cols-3 gap-1">
@@ -140,10 +140,10 @@ export function AppBottomNav() {
                 key={linkKey}
                 href={href}
                 suppressHydrationWarning={linkKey === "insights"}
-                className={`flex flex-col items-center justify-center gap-1 rounded-full px-1 py-2 text-[11px] font-medium leading-none tracking-tight transition-colors duration-200 ${
+                className={`flex min-h-[3rem] flex-col items-center justify-center gap-1 rounded-full px-1 py-2 text-[11px] font-medium leading-none tracking-tight outline-none transition-[color,transform,background-color] duration-200 ease-out focus-visible:ring-2 focus-visible:ring-align-forest/35 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:scale-[0.97] motion-reduce:active:scale-100 ${
                   active
-                    ? "bg-align-nav-active text-align-forest shadow-[0_1px_2px_rgba(27,77,67,0.1)]"
-                    : "text-zinc-500 hover:text-zinc-800"
+                    ? "bg-align-nav-active text-align-forest shadow-sm shadow-black/[0.06]"
+                    : "text-zinc-500 hover:bg-align-subtle/80 hover:text-zinc-800"
                 }`}
                 aria-current={active ? "page" : undefined}
               >

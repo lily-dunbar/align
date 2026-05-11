@@ -1,5 +1,7 @@
 import type { ComponentPropsWithoutRef } from "react";
 
+import { uiHeroSurface, uiPanelSurface } from "@/lib/ui-surfaces";
+
 type SkeletonProps = ComponentPropsWithoutRef<"div"> & {
   /** Announced to screen readers while loading */
   label?: string;
@@ -21,13 +23,15 @@ export function Skeleton({ className = "", label, ...props }: SkeletonProps) {
 export function DateNavSkeleton() {
   return (
     <section className="w-full py-0.5" aria-hidden>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          <Skeleton className="h-10 w-20 rounded-full" />
-          <Skeleton className="h-10 w-36 rounded-xl" />
-          <Skeleton className="h-10 w-20 rounded-full" />
+      <div className="flex flex-col gap-3">
+        <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-center gap-2 sm:gap-3">
+          <Skeleton className="h-10 w-10 rounded-full" />
+          <Skeleton className="h-10 w-32 justify-self-center rounded-full sm:w-36" />
+          <Skeleton className="h-10 w-10 justify-self-end rounded-full" />
         </div>
-        <Skeleton className="h-11 w-36 rounded-full" />
+        <div className="flex justify-stretch sm:justify-end">
+          <Skeleton className="h-11 w-full rounded-full sm:w-40" />
+        </div>
       </div>
     </section>
   );
@@ -35,10 +39,7 @@ export function DateNavSkeleton() {
 
 export function DailyViewChartSkeleton() {
   return (
-    <section
-      className="w-full min-w-0 rounded-2xl border border-align-border/90 bg-white/90 p-5 ring-1 ring-black/[0.03] md:p-6"
-      aria-hidden
-    >
+    <section className={`w-full min-w-0 p-5 md:p-6 ${uiHeroSurface}`} aria-hidden>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Skeleton className="h-6 w-28" />
         <div className="flex flex-wrap items-center gap-1.5">
@@ -47,8 +48,12 @@ export function DailyViewChartSkeleton() {
           <Skeleton className="h-8 w-12 rounded-full" />
         </div>
       </div>
-      <Skeleton className="mt-2 h-4 max-w-md" />
-      <div className="mt-4 h-[22rem] min-h-[20rem] w-full animate-pulse rounded-xl bg-gradient-to-b from-align-subtle via-zinc-200/40 to-align-subtle ring-1 ring-inset ring-black/[0.04] sm:h-96" />
+      <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 pb-2">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-4 w-28" />
+      </div>
+      <div className="mt-4 h-[22rem] min-h-[20rem] w-full animate-pulse rounded-xl border border-align-border/50 bg-gradient-to-b from-align-subtle via-zinc-200/40 to-align-subtle sm:h-96" />
     </section>
   );
 }
@@ -68,7 +73,7 @@ export function DaySummaryCardsSkeleton() {
 
 function MetricCardShape() {
   return (
-    <div className="rounded-2xl border border-white/60 bg-align-subtle/90 p-4 ring-1 ring-black/[0.04]">
+    <div className="rounded-2xl border border-align-border/55 bg-white p-4 shadow-sm shadow-black/[0.03]">
       <div className="flex items-center gap-2">
         <Skeleton className="h-4 w-4 shrink-0 rounded" />
         <Skeleton className="h-3 flex-1" />
@@ -107,13 +112,22 @@ export function PatternWindowSummaryCardsSkeleton() {
 
 function PatternTakeawayInsightCardSkeleton() {
   return (
-    <li className="rounded-2xl border border-align-border/80 bg-white p-6 shadow-sm shadow-black/[0.03] ring-1 ring-black/[0.02]">
-      <Skeleton className="h-5 max-w-md" />
-      <Skeleton className="mt-4 h-4 w-full" />
-      <Skeleton className="mt-2 h-4 w-[95%]" />
-      <div className="mt-4 flex flex-wrap items-center gap-2.5">
-        <Skeleton className="h-7 w-32 rounded-full" />
-        <Skeleton className="h-5 w-20" />
+    <li className="rounded-2xl border border-align-border/80 bg-white p-5 shadow-sm shadow-black/[0.03] sm:p-6">
+      <div className="flex gap-3.5">
+        <Skeleton className="h-11 w-11 shrink-0 rounded-full" />
+        <div className="min-w-0 flex-1 space-y-2.5">
+          <Skeleton className="h-5 max-w-[min(100%,18rem)]" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-[94%]" />
+          <div className="flex flex-wrap gap-2">
+            <Skeleton className="h-7 w-20 rounded-full" />
+            <Skeleton className="h-7 w-24 rounded-full" />
+            <Skeleton className="h-7 w-[5.5rem] rounded-full" />
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 border-t border-align-border-soft pt-3">
+        <Skeleton className="h-4 w-24" />
       </div>
     </li>
   );
@@ -122,7 +136,7 @@ function PatternTakeawayInsightCardSkeleton() {
 export function PatternsTakeawaysSectionSkeleton() {
   return (
     <div
-      className="rounded-2xl border border-align-border/90 bg-white/90 p-6 ring-1 ring-black/[0.03]"
+      className={`p-6 ${uiPanelSurface}`}
       role="status"
       aria-busy="true"
       aria-label="Loading insight cards"
@@ -145,7 +159,7 @@ export function PatternsTakeawaysSectionSkeleton() {
 
 function InsightRowSkeleton() {
   return (
-    <li className="rounded-xl border border-align-border/80 bg-align-subtle/50 px-4 py-3 ring-1 ring-black/[0.02]">
+    <li className="rounded-xl border border-align-border/70 bg-align-subtle/50 px-4 py-3 shadow-sm shadow-black/[0.02]">
       <Skeleton className="h-4 max-w-xs" />
       <Skeleton className="mt-2 h-3 w-full" />
       <Skeleton className="mt-2 h-3 max-w-md" />
@@ -166,7 +180,7 @@ export function DayInsightsListSkeleton() {
 export function DayInsightsPanelSkeleton() {
   return (
     <section
-      className="w-full rounded-2xl border border-align-border/90 bg-white/90 p-5 ring-1 ring-black/[0.03] md:p-6"
+      className={`w-full p-5 md:p-6 ${uiPanelSurface}`}
       aria-label="Loading day insights"
       role="status"
       aria-busy="true"
@@ -202,11 +216,11 @@ export function PatternsPageSkeleton() {
       aria-busy="true"
       aria-label="Loading insights"
     >
-      <div className="space-y-3" aria-hidden>
-        <div className="flex flex-wrap gap-2">
-          <Skeleton className="h-10 w-24 rounded-full" />
-          <Skeleton className="h-10 w-28 rounded-full" />
-          <Skeleton className="h-10 w-24 rounded-full" />
+      <div className="w-full space-y-3" aria-hidden>
+        <div className="flex w-full min-w-0 gap-1 rounded-full bg-zinc-100/90 p-1 ring-1 ring-zinc-200/55">
+          <Skeleton className="h-10 min-h-10 flex-1 basis-0 rounded-full" />
+          <Skeleton className="h-10 min-h-10 flex-1 basis-0 rounded-full" />
+          <Skeleton className="h-10 min-h-10 flex-1 basis-0 rounded-full" />
         </div>
         <Skeleton className="h-3 max-w-lg" aria-hidden />
       </div>

@@ -6,6 +6,7 @@ import { useCallback, useState } from "react";
 import { ToggleSwitch } from "@/components/toggle-switch";
 import { DAY_DATA_CHANGED_EVENT } from "@/lib/day-view-events";
 import type { UserPreferences } from "@/lib/user-display-preferences";
+import { uiPanelSurface } from "@/lib/ui-surfaces";
 
 type Props = {
   /** When true, only the demo-mode switch is shown (no reset tools). For allowlisted production users. */
@@ -108,7 +109,7 @@ export function SettingsDeveloperCard({
   }, []);
 
   return (
-    <section className="w-full rounded-2xl border border-align-border/90 bg-white/90 p-5 text-left ring-1 ring-black/[0.03]">
+    <section className={`w-full p-5 text-left ${uiPanelSurface}`}>
       <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
         {demoOnly ? "Demo mode" : "Developer"}
       </h2>

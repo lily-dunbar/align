@@ -4,10 +4,10 @@ type MetricVariant = "glucose" | "tir" | "steps";
 
 const shells: Record<MetricVariant, string> = {
   glucose:
-    "border-white/60 bg-align-card-glucose ring-1 ring-black/[0.04] dark:border-white/5 dark:ring-white/10",
-  tir: "border-white/60 bg-align-card-tir ring-1 ring-black/[0.04] dark:border-white/5 dark:ring-white/10",
+    "border-align-border/55 bg-align-card-glucose shadow-sm shadow-black/[0.02] dark:border-white/10",
+  tir: "border-align-border/55 bg-align-card-tir shadow-sm shadow-black/[0.02] dark:border-white/10",
   steps:
-    "border-white/60 bg-align-card-steps ring-1 ring-black/[0.04] dark:border-white/5 dark:ring-white/10",
+    "border-align-border/55 bg-align-card-steps shadow-sm shadow-black/[0.02] dark:border-white/10",
 };
 
 const valueColors: Record<MetricVariant, string> = {
@@ -17,7 +17,12 @@ const valueColors: Record<MetricVariant, string> = {
 };
 
 function MetricIcon({ variant }: { variant: MetricVariant }) {
-  const cls = "h-4 w-4 shrink-0 text-zinc-500/90";
+  const cls =
+    variant === "glucose"
+      ? "h-4 w-4 shrink-0 text-align-text-glucose/80"
+      : variant === "tir"
+        ? "h-4 w-4 shrink-0 text-align-text-tir/85"
+        : "h-4 w-4 shrink-0 text-align-text-steps/85";
   if (variant === "glucose") {
     return (
       <svg className={cls} viewBox="0 0 24 24" fill="none" aria-hidden>

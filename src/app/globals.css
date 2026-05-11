@@ -3,6 +3,8 @@
 :root {
   --background: #f7f9f8;
   --foreground: #15201e;
+  --align-selection-bg: rgba(226, 239, 233, 0.92);
+  --align-selection-fg: #15201e;
 }
 
 @theme inline {
@@ -19,13 +21,17 @@
   --color-align-border: #e4ebea;
   --color-align-border-soft: #eef2f1;
 
-  --color-align-card-glucose: #f3f5eb;
+  /* Day summary + chart: glucose green, steps blue; TIR uses original mint + forest text (same family as `--align-forest`). */
+  --color-align-card-glucose: #eef4ea;
   --color-align-card-tir: #ddeae5;
-  --color-align-card-steps: #d4e3f6;
+  --color-align-card-steps: #e4eef9;
 
-  --color-align-text-glucose: #45532a;
+  --color-align-text-glucose: #2d4f2f;
   --color-align-text-tir: #1b4d43;
-  --color-align-text-steps: #2a5685;
+  --color-align-text-steps: #1e5a9a;
+
+  /** Daily chart glucose line + legend swatch (slightly richer than card text for contrast on white). */
+  --color-align-chart-glucose: #2d6a3a;
 
   --color-align-muted: #5f6f6c;
   --color-align-nav-active: #e2efe9;
@@ -36,6 +42,18 @@
   :root {
     --background: #0f1413;
     --foreground: #e8edec;
+    --align-selection-bg: rgba(45, 107, 94, 0.42);
+    --align-selection-fg: #f0f7f5;
+  }
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
   }
 }
 
@@ -43,6 +61,13 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  line-height: 1.5;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background-color: var(--align-selection-bg);
+  color: var(--align-selection-fg);
 }
 
 .onboarding-gradient-bg {
@@ -99,4 +124,19 @@ body {
 
 .align-launch-sparkle {
   animation: alignLaunchSparkle 1.45s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .align-launch-glisten,
+  .align-launch-sparkle {
+    animation: none;
+  }
+
+  @keyframes alignChartEnter {
+    from,
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
 }

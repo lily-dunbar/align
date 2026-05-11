@@ -9,10 +9,10 @@ import {
 } from "@/lib/patterns/stored-window";
 import type { PatternWindow } from "@/lib/patterns/types";
 
-const WINDOWS: { id: PatternWindow; label: string }[] = [
-  { id: "7d", label: "7 days" },
-  { id: "30d", label: "30 days" },
-  { id: "90d", label: "90 days" },
+const WINDOWS: { id: PatternWindow; label: string; title: string }[] = [
+  { id: "7d", label: "7d", title: "7 days" },
+  { id: "30d", label: "30d", title: "30 days" },
+  { id: "90d", label: "90d", title: "90 days" },
 ];
 
 export function PatternRangeFilters({
@@ -48,17 +48,17 @@ export function PatternRangeFilters({
 
   const tabClass = (selected: boolean) =>
     selected
-      ? "rounded-full bg-align-forest px-4 py-2 text-sm font-medium text-white shadow-sm shadow-black/10"
-      : "rounded-full border border-align-border/90 bg-white/90 px-4 py-2 text-sm font-medium text-zinc-700 ring-1 ring-black/[0.03] transition hover:bg-align-subtle";
+      ? "flex min-h-10 flex-1 basis-0 items-center justify-center rounded-full bg-align-forest px-2 py-2 text-sm font-semibold text-white shadow-sm shadow-black/10 sm:px-3"
+      : "flex min-h-10 flex-1 basis-0 items-center justify-center rounded-full px-2 py-2 text-sm font-semibold text-align-forest transition hover:bg-white/70 sm:px-3";
 
   return (
     <div
-      className="flex flex-wrap gap-2"
+      className="flex w-full min-w-0 rounded-full bg-align-subtle/95 p-1 ring-1 ring-align-border/45"
       role="tablist"
       aria-label="Insights date range"
       aria-busy={navigationPending}
     >
-      {WINDOWS.map(({ id, label }) => {
+      {WINDOWS.map(({ id, label, title }) => {
         const selected = id === active;
         if (onWindowChange) {
           return (
@@ -73,6 +73,8 @@ export function PatternRangeFilters({
                 persistWindow(id);
                 onWindowChange(id);
               }}
+              aria-label={title}
+              title={title}
               className={`${tabClass(selected)} ${navigationPending ? "cursor-wait opacity-80" : ""}`}
             >
               {label}
@@ -86,6 +88,8 @@ export function PatternRangeFilters({
             aria-selected={selected}
             tabIndex={selected ? 0 : -1}
             href={href(id)}
+            aria-label={title}
+            title={title}
             onClick={() => persistWindow(id)}
             className={tabClass(selected)}
           >

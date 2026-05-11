@@ -48,7 +48,10 @@ export function AppHeader({ devModeBanner = false }: AppHeaderProps) {
   return (
     <header className="sticky top-0 z-40 border-b border-align-border/80 bg-white/85 backdrop-saturate-150 backdrop-blur-md supports-[backdrop-filter]:bg-white/70">
       {showDemoBanner ? (
-        <div className="border-b border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] px-4 py-1.5 text-center text-xs font-medium text-slate-700 md:px-8">
+        <div
+          role="status"
+          className="border-b border-align-border/60 bg-align-subtle/90 px-4 py-1.5 text-center text-xs font-medium text-align-muted md:px-8"
+        >
           Demo Mode
         </div>
       ) : null}

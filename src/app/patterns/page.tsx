@@ -16,6 +16,7 @@ import {
 import { needsOnboarding } from "@/lib/onboarding";
 import { safeTimeZoneForPatterns } from "@/lib/patterns/safe-timezone";
 import { parsePatternWindow } from "@/lib/patterns/window";
+import { uiPanelSurface } from "@/lib/ui-surfaces";
 import { getUserPreferences } from "@/lib/user-display-preferences";
 
 function readParam(
@@ -51,7 +52,7 @@ export default async function PatternsPage({
   const atIso = new Date().toISOString();
 
   return (
-    <main className="mx-auto flex min-h-[100dvh] w-full max-w-6xl flex-col gap-8 bg-background px-4 py-8 md:px-8 md:py-10">
+    <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-6 bg-background px-4 py-6 md:gap-8 md:px-8 md:py-10">
       {userId && needsTzSync ? (
         <Suspense fallback={null}>
           <PatternsTimezoneSync window={window} />
@@ -59,13 +60,16 @@ export default async function PatternsPage({
       ) : null}
 
       {!userId ? (
-        <div className="rounded-2xl border border-align-border/90 bg-white/90 p-6 ring-1 ring-black/[0.03]">
+        <div className={`p-6 ${uiPanelSurface}`}>
           <p className="text-sm text-zinc-700">
             Sign in to load pattern summaries from your Dexcom, movement, sleep, and meals.
           </p>
           <p className="mt-3 text-sm text-zinc-700">
             Want to explore first? Try the{" "}
-            <Link className="font-medium text-zinc-900 underline" href="/demo">
+            <Link
+              className="rounded-sm font-medium text-align-forest underline decoration-align-forest/35 underline-offset-2 outline-none transition hover:text-align-forest-muted hover:decoration-align-forest/55 focus-visible:ring-2 focus-visible:ring-align-forest/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              href="/demo"
+            >
               public demo
             </Link>
             .
@@ -74,7 +78,7 @@ export default async function PatternsPage({
       ) : null}
 
       {userId && needsTzSync ? (
-        <div className="rounded-2xl border border-align-border/90 bg-white/90 p-6 ring-1 ring-black/[0.03]">
+        <div className={`p-6 ${uiPanelSurface}`}>
           <p className="text-sm text-zinc-600">Applying your local time zone…</p>
         </div>
       ) : null}

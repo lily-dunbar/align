@@ -383,22 +383,28 @@ export function PatternLearnMorePanel({ learnMore, targetLowMgdl, targetHighMgdl
   const panelId = useId();
 
   return (
-    <div className="mt-5 border-t border-align-border-soft pt-4">
+    <div className="mt-4 border-t border-align-border-soft pt-3">
       <button
         type="button"
         aria-expanded={open}
         aria-label={open ? "Collapse methodology details" : "Learn more — how we calculated this pattern"}
         aria-controls={panelId}
         onClick={() => setOpen((v) => !v)}
-        className="group flex w-full items-center justify-between gap-2 rounded-md px-0 py-0.5 text-left text-sm font-semibold text-align-forest transition hover:text-align-forest-muted"
+        className="group flex w-full items-center justify-between gap-2 rounded-md px-0 py-1 text-left text-sm font-semibold text-align-forest transition hover:text-align-forest-muted"
       >
         <span>Learn more</span>
-        <span
-          className="text-2xl leading-none text-align-muted transition group-hover:text-align-forest sm:text-[1.75rem]"
+        <svg
+          className={`h-4 w-4 shrink-0 text-align-forest transition group-hover:text-align-forest-muted motion-reduce:transition-none ${open ? "rotate-90" : ""}`}
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
           aria-hidden
         >
-          {open ? "▾" : "▸"}
-        </span>
+          <path d="M9 5l7 7-7 7" />
+        </svg>
       </button>
       {open ? (
         <div id={panelId} className="mt-3 space-y-3 text-sm">

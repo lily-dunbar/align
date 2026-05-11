@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useId, useRef, type MouseEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { useEffectiveTimeZone } from "@/hooks/use-effective-timezone";
@@ -27,18 +27,90 @@ function formatDateLabel(dateYmd: string, todayYmd: string) {
   const [y, m, d] = dateYmd.split("-").map(Number);
   const dt = new Date(y, m - 1, d);
   if (Number.isNaN(dt.getTime())) return dateYmd;
-  return dt.toLocaleDateString();
+  return dt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
+
+function CalendarGlyph({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="3.25" y="5.25" width="17.5" height="15.5" rx="2" />
+      <path d="M8 3.25v4M16 3.25v4M3.25 10.25h17.5" />
+    </svg>
+  );
+}
+
+function ChevronLeftIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M15 6l-6 6 6 6" />
+    </svg>
+  );
+}
+
+function ChevronRightIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M9 6l6 6-6 6" />
+    </svg>
+  );
+}
+
+const navCircleBtnClass =
+  "inline-flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full border border-zinc-200/95 bg-white text-zinc-700 shadow-sm shadow-black/[0.04] outline-none transition hover:border-zinc-300 hover:bg-zinc-50/90 active:scale-[0.97] motion-reduce:active:scale-100 focus-visible:ring-2 focus-visible:ring-align-forest/25 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:border-zinc-100 disabled:bg-zinc-50 disabled:text-zinc-300 disabled:shadow-none disabled:hover:bg-zinc-50";
 
 export function DateNav({ initialDateYmd }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
   const effectiveTz = useEffectiveTimeZone();
+  const dateInputId = useId();
+  const dateInputRef = useRef<HTMLInputElement>(null);
   const selectedDate = useResolvedDayYmd(initialDateYmd);
   const todayYmd = getLocalCalendarYmd(new Date(), effectiveTz);
   const isAtLatestDay = selectedDate >= todayYmd;
   const dateLabel = formatDateLabel(selectedDate, todayYmd);
+
+  function openNativeDatePicker(e: MouseEvent<HTMLLabelElement>) {
+    const input = dateInputRef.current;
+    if (!input) return;
+    if (typeof input.showPicker === "function") {
+      try {
+        e.preventDefault();
+        input.showPicker();
+      } catch {
+        input.click();
+      }
+      return;
+    }
+    /* No showPicker: label’s default behavior activates the hidden date input. */
+  }
 
   useEffect(() => {
     if (selectedDate > todayYmd) {
@@ -61,48 +133,59 @@ export function DateNav({ initialDateYmd }: Props) {
 
   return (
     <section className="w-full" aria-label="Day navigation">
-      <div className="py-0.5">
-        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-          <div className="flex w-full justify-center sm:flex-1 sm:justify-start">
-            <div className="grid min-w-0 w-full max-w-md grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1.5">
-              <button
-                type="button"
-                className="touch-manipulation flex min-h-12 min-w-[2.75rem] shrink-0 items-center justify-center rounded-full border border-transparent px-2.5 py-2 text-sm text-zinc-700 transition hover:bg-align-subtle active:bg-align-subtle sm:px-3"
-                onClick={() => setDate(addDays(selectedDate, -1))}
-              >
-                ← Prev
-              </button>
-              {/* Overlay native date input so taps open the picker on mobile (showPicker is flaky). */}
-              <div className="relative isolate flex min-h-12 min-w-0 w-full touch-manipulation items-center justify-center rounded-xl border border-align-border bg-white px-3 py-2.5 text-center text-sm text-zinc-800 shadow-sm shadow-black/5">
-                <input
-                  type="date"
-                  value={selectedDate}
-                  max={todayYmd}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="absolute inset-0 z-[1] h-full min-h-12 w-full cursor-pointer opacity-0 [color-scheme:light]"
-                  aria-label="Choose date"
-                  style={{ fontSize: "max(16px, 1rem)" }}
-                />
-                <span className="pointer-events-none relative z-0 block max-w-full truncate font-medium">
-                  {dateLabel}
-                </span>
-              </div>
-              <button
-                type="button"
-                disabled={isAtLatestDay}
-                aria-disabled={isAtLatestDay}
-                title={isAtLatestDay ? "Already on the latest day you can view" : undefined}
-                className="touch-manipulation flex min-h-12 min-w-[2.75rem] shrink-0 items-center justify-center rounded-full border border-transparent px-2.5 py-2 text-sm text-zinc-700 transition hover:bg-align-subtle active:bg-align-subtle disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent sm:px-3"
-                onClick={() => setDate(addDays(selectedDate, 1))}
-              >
-                Next →
-              </button>
-            </div>
+      <div className="flex flex-col gap-3">
+        <div className="flex w-full items-center gap-2 sm:gap-3">
+          <button
+            type="button"
+            aria-label="Previous day"
+            className={navCircleBtnClass}
+            onClick={() => setDate(addDays(selectedDate, -1))}
+          >
+            <ChevronLeftIcon className="h-5 w-5" />
+          </button>
+
+          <div className="relative flex min-h-10 min-w-0 flex-1 justify-center touch-manipulation">
+            <input
+              ref={dateInputRef}
+              id={dateInputId}
+              type="date"
+              value={selectedDate}
+              max={todayYmd}
+              onChange={(e) => setDate(e.target.value)}
+              className="sr-only [color-scheme:light]"
+              aria-label="Choose date"
+              style={{ fontSize: "max(16px, 1rem)" }}
+            />
+            <label
+              htmlFor={dateInputId}
+              onClick={openNativeDatePicker}
+              className="inline-flex min-h-10 min-w-0 max-w-full cursor-pointer select-none items-center justify-center gap-2 rounded-full px-3 py-2 text-center transition hover:bg-align-subtle/90 active:bg-align-subtle"
+            >
+              <CalendarGlyph className="h-4 w-4 shrink-0 text-zinc-600" aria-hidden />
+              <span className="truncate text-sm font-semibold tracking-tight text-zinc-800">
+                {dateLabel}
+              </span>
+            </label>
           </div>
+
+          <button
+            type="button"
+            aria-label="Next day"
+            disabled={isAtLatestDay}
+            aria-disabled={isAtLatestDay}
+            title={isAtLatestDay ? "Already on the latest day you can view" : undefined}
+            className={navCircleBtnClass}
+            onClick={() => setDate(addDays(selectedDate, 1))}
+          >
+            <ChevronRightIcon className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="flex justify-stretch sm:justify-end">
           <button
             type="button"
             onClick={openAddActivityModal}
-            className="inline-flex min-h-10 w-full shrink-0 items-center justify-center gap-1.5 rounded-full bg-align-forest px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-black/10 transition hover:bg-align-forest-muted sm:w-auto"
+            className="inline-flex min-h-11 w-full min-w-0 items-center justify-center gap-1.5 rounded-full bg-align-forest px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-black/10 outline-none transition hover:bg-align-forest-muted active:brightness-95 focus-visible:ring-2 focus-visible:ring-align-forest/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:w-auto sm:min-w-[10.5rem]"
           >
             <span aria-hidden>+</span>
             <span>Add Activity</span>

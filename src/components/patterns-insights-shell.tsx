@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 
 import { PatternRangeFilters } from "@/components/pattern-range-filters";
 import {
@@ -32,12 +32,6 @@ export function PatternsInsightsShell({
   const [isPending, startTransition] = useTransition();
   const [pendingWindow, setPendingWindow] = useState<PatternWindow | null>(null);
 
-  useEffect(() => {
-    if (pendingWindow === activeWindow) {
-      setPendingWindow(null);
-    }
-  }, [activeWindow, pendingWindow]);
-
   function navigate(next: PatternWindow) {
     if (next === activeWindow) return;
     setPendingWindow(next);
@@ -47,11 +41,12 @@ export function PatternsInsightsShell({
     });
   }
 
-  const showLoadingState = isPending || pendingWindow !== null;
+  const showLoadingState =
+    isPending || (pendingWindow !== null && pendingWindow !== activeWindow);
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="space-y-3">
+      <div className="w-full space-y-3">
         <PatternRangeFilters
           active={activeWindow}
           timeZone={timeZone}

@@ -4,14 +4,18 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 
 const SPLASH_MS = 2000;
+const SPLASH_MS_REDUCED_MOTION = 450;
 
 export function AppLaunchSplashGate({ children }: { children: React.ReactNode }) {
   const [showSplash, setShowSplash] = useState(true);
   const [fadeOut, setFadeOut] = useState(false);
 
   useEffect(() => {
-    const startFade = window.setTimeout(() => setFadeOut(true), SPLASH_MS - 350);
-    const endSplash = window.setTimeout(() => setShowSplash(false), SPLASH_MS);
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const duration = reduced ? SPLASH_MS_REDUCED_MOTION : SPLASH_MS;
+    const fadeLead = reduced ? 120 : 350;
+    const startFade = window.setTimeout(() => setFadeOut(true), duration - fadeLead);
+    const endSplash = window.setTimeout(() => setShowSplash(false), duration);
     return () => {
       window.clearTimeout(startFade);
       window.clearTimeout(endSplash);
@@ -23,13 +27,13 @@ export function AppLaunchSplashGate({ children }: { children: React.ReactNode })
       {showSplash ? (
         <div
           aria-hidden
-          className={`fixed inset-0 z-[100] overflow-hidden bg-[radial-gradient(circle_at_82%_12%,#acb98a_0%,#8baa90_18%,#6a9aa1_38%,#467f91_66%,#275f6f_100%)] transition-opacity duration-500 ${
+          className={`fixed inset-0 z-[100] overflow-hidden bg-[radial-gradient(circle_at_82%_12%,#acb98a_0%,#8baa90_18%,#6a9aa1_38%,#467f91_66%,#275f6f_100%)] transition-opacity duration-500 motion-reduce:transition-none motion-reduce:duration-0 ${
             fadeOut ? "opacity-0" : "opacity-100"
           }`}
         >
           <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.06)_0%,rgba(255,255,255,0)_38%,rgba(8,32,39,0.1)_100%)]" />
           <div className="relative flex h-full items-center justify-center">
-            <div className="relative w-[180px] max-w-[64vw] sm:w-[220px]">
+            <div className="relative w-[132px] max-w-[52vw] sm:w-[168px]">
               <Image
                 src="/brand/align-wordmark-white.png"
                 alt="Align"

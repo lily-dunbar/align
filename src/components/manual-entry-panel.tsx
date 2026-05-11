@@ -758,7 +758,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
     <>
       {toast ? <LightToast message={toast} /> : null}
       {showCard ? (
-        <section className="w-full overflow-hidden rounded-2xl border border-align-border/90 bg-white/90 p-5 text-left shadow-sm ring-1 ring-black/[0.03]">
+        <section className="w-full overflow-hidden rounded-2xl border border-align-border/80 bg-white p-5 text-left shadow-sm shadow-black/[0.03]">
           <div className="flex flex-col gap-4">
             <div className="min-w-0">
               <h2 className="text-lg font-semibold tracking-tight text-zinc-900">
@@ -791,7 +791,7 @@ export function ManualEntryPanel({ dateYmd, showCard = true }: Props) {
           aria-modal="true"
           aria-labelledby="manual-entry-title"
         >
-          <div className="manual-entry-modal max-h-[92vh] w-full max-w-lg overflow-hidden rounded-2xl border border-align-border/90 bg-white shadow-[0_20px_50px_-12px_rgba(27,77,67,0.2)] ring-1 ring-black/[0.04]">
+          <div className="manual-entry-modal max-h-[92vh] w-full max-w-lg overflow-hidden rounded-2xl border border-align-border/80 bg-white shadow-xl shadow-black/[0.14]">
             <div className="max-h-[92vh] overflow-y-auto px-5 pb-6 pt-5 sm:px-6">
               {!showCard && error ? (
                 <p className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>

@@ -1,8 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useId, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  useTransition,
+  type ReactNode,
+} from "react";
 import { LightToast } from "@/components/light-toast";
+import { uiPanelSurface } from "@/lib/ui-surfaces";
 
 function readBrowserOrigin(): string {
   if (typeof window === "undefined") return "";
@@ -45,6 +55,20 @@ function formatTimeOnly(iso: string | null) {
   } catch {
     return "—";
   }
+}
+
+function noopSubscribe() {
+  return () => {};
+}
+
+function snapshotBrowserIsLocalDev() {
+  if (typeof window === "undefined") return false;
+  const h = window.location.hostname;
+  return h === "localhost" || h === "127.0.0.1";
+}
+
+function serverSnapshotBrowserIsLocalDev() {
+  return false;
 }
 
 function stepsSourceLabel(source: string) {
@@ -100,8 +124,41 @@ type StepsIngestInfo = {
   notes: string[];
 };
 
-export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot }) {
+function IntegrationPrimaryLink({
+  readOnly,
+  href,
+  children,
+}: {
+  readOnly: boolean;
+  href: string;
+  children: ReactNode;
+}) {
+  if (readOnly) {
+    return (
+      <span
+        className={`${primaryButtonClass} cursor-not-allowed opacity-55`}
+        title="Sign in to Align (outside this demo) to connect accounts."
+      >
+        {children}
+      </span>
+    );
+  }
+  return (
+    <a className={primaryButtonClass} href={href}>
+      {children}
+    </a>
+  );
+}
+
+type SettingsIntegrationsProps = {
+  initial: IntegrationSnapshot;
+  /** When true, shows the same integration UI but blocks OAuth, sync, and disconnect actions (demo tour). */
+  readOnly?: boolean;
+};
+
+export function SettingsIntegrations({ initial, readOnly = false }: SettingsIntegrationsProps) {
   const router = useRouter();
+  const [, startTransition] = useTransition();
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -110,6 +167,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
   const stepsDisplay = stepsLive ?? initial.steps;
   const [openOverflow, setOpenOverflow] = useState<"dexcom" | "strava" | "steps" | null>(null);
   const [stepsIngest, setStepsIngest] = useState<StepsIngestInfo | null>(null);
+  const controlsLocked = readOnly || busy !== null;
   const [copyFlash, setCopyFlash] = useState(false);
   const [stepsIngestModalOpen, setStepsIngestModalOpen] = useState(false);
   /** Matches `/api/day` streams.hourlySteps for today (local TZ) — same as the home Daily chart. */
@@ -123,8 +181,12 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
     browserOrigin: string | null;
     ingestOriginMismatch: boolean;
   }>({ browserOrigin: null, ingestOriginMismatch: false });
-  /** After mount: whether Settings was opened on localhost (file sync) vs hosted (copy ingest URL). */
-  const [browserIsLocalDev, setBrowserIsLocalDev] = useState<boolean | null>(null);
+  /** Whether Settings was opened on localhost (file sync) vs hosted (copy ingest URL). */
+  const browserIsLocalDev = useSyncExternalStore(
+    noopSubscribe,
+    snapshotBrowserIsLocalDev,
+    serverSnapshotBrowserIsLocalDev,
+  );
   const mostRecentIngest = stepsDisplay.recentRows[0] ?? null;
   const chartCoverageRows = useMemo(() => {
     const byBucket = new Map(
@@ -153,18 +215,24 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
 
   /** Drop client overlay once the server RSC payload catches up with a newer last-write time. */
   useEffect(() => {
-    setStepsLive(null);
-  }, [initial.steps.lastIngestAt]);
+    startTransition(() => {
+      setStepsLive(null);
+    });
+  }, [initial.steps.lastIngestAt, startTransition]);
+
+  const closeStepsIngestModal = useCallback(() => {
+    setStepsIngestModalOpen(false);
+    setTodayChartBuckets(null);
+    setTodayChartBucketsError(null);
+  }, []);
 
   useEffect(() => {
-    if (!stepsIngestModalOpen) {
-      setTodayChartBuckets(null);
-      setTodayChartBucketsError(null);
-      return;
-    }
+    if (!stepsIngestModalOpen) return;
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
     let cancelled = false;
-    setTodayChartBucketsError(null);
+    queueMicrotask(() => {
+      if (!cancelled) setTodayChartBucketsError(null);
+    });
     void fetch(`/api/day?timeZone=${encodeURIComponent(tz)}`, {
       credentials: "include",
       cache: "no-store",
@@ -213,11 +281,6 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
   }
 
   useEffect(() => {
-    const h = window.location.hostname;
-    setBrowserIsLocalDev(h === "localhost" || h === "127.0.0.1");
-  }, []);
-
-  useEffect(() => {
     const origin = readBrowserOrigin() || null;
     const host = window.location.hostname;
     let ingestOriginMismatch = false;
@@ -246,6 +309,23 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
 
   /** Loads the personal ingest URL from the API (same JSON as Shortcuts should use as the POST base). */
   const fetchStepsIngestInfo = useCallback(async (): Promise<StepsIngestInfo | null> => {
+    if (readOnly) {
+      if (!initial.steps.connected) {
+        setStepsIngest(null);
+        return null;
+      }
+      const origin = readBrowserOrigin();
+      const info: StepsIngestInfo = {
+        ingestUrl: origin
+          ? `${origin}/api/ingest/steps/your-personal-token`
+          : "https://your-app.example.com/api/ingest/steps/your-personal-token",
+        notes: [
+          "Demo: read-only. Sign in to Align (outside this tour) to create a real ingest URL tied to your account.",
+        ],
+      };
+      setStepsIngest(info);
+      return info;
+    }
     if (!initial.steps.connected) {
       setStepsIngest(null);
       return null;
@@ -259,7 +339,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
     const info: StepsIngestInfo = { ingestUrl: json.ingestUrl, notes: json.notes ?? [] };
     setStepsIngest(info);
     return info;
-  }, [initial.steps.connected]);
+  }, [initial.steps.connected, readOnly]);
 
   const loadStepsIngestInfo = useCallback(async () => {
     try {
@@ -276,6 +356,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
   }, [loadStepsIngestInfo]);
 
   async function disconnect(kind: "dexcom" | "strava" | "steps") {
+    if (readOnly) return;
     if (kind === "dexcom" && initial.dexcom.shareCredentialsMode) {
       if (
         !window.confirm(
@@ -327,6 +408,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
   }
 
   async function showDexcomShareAgain() {
+    if (readOnly) return;
     setBusy("show-dexcom-share");
     setNotice(null);
     try {
@@ -343,6 +425,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
   }
 
   async function connectSteps() {
+    if (readOnly) return;
     setBusy("connect-steps");
     setNotice(null);
     try {
@@ -396,6 +479,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
 
   /** Re-fetch Settings data so charts and stats reflect your most recent Shortcut POST to the server. */
   async function pullSteps() {
+    if (readOnly) return;
     setBusy("pull-steps");
     setNotice(null);
     setOpenOverflow(null);
@@ -417,6 +501,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
    * (same as Copy URL in setup details).
    */
   async function localSyncSteps() {
+    if (readOnly) return;
     setBusy("local-sync-steps");
     setNotice(null);
     setOpenOverflow(null);
@@ -471,6 +556,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
   }
 
   async function syncDexcom(lookbackDays?: number) {
+    if (readOnly) return;
     setBusy(`sync-dexcom-${lookbackDays ?? "auto"}`);
     setNotice(null);
     setOpenOverflow(null);
@@ -501,6 +587,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
   }
 
   async function syncStrava(lookbackDays?: number) {
+    if (readOnly) return;
     setBusy(`sync-strava-${lookbackDays ?? "auto"}`);
     setNotice(null);
     setOpenOverflow(null);
@@ -532,10 +619,15 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
   }
 
   return (
-    <section className="w-full rounded-2xl border border-align-border/90 bg-white/90 p-5 ring-1 ring-black/[0.03]">
+    <section className={`w-full p-5 ${uiPanelSurface}`}>
       <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
         Integrations
       </h2>
+      {readOnly ? (
+        <p className="mt-2 text-sm text-zinc-600">
+          This tour is read-only. Sign in to Align to connect Dexcom, Strava, and Apple Steps for real.
+        </p>
+      ) : null}
 
       {notice ? (
         <p
@@ -583,25 +675,25 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                     <button
                       type="button"
                       className={secondaryButtonClass}
-                      disabled={busy !== null}
+                      disabled={controlsLocked}
                       onClick={() => void showDexcomShareAgain()}
                     >
                       {busy === "show-dexcom-share" ? "Restoring…" : "Show Dexcom Share"}
                     </button>
                   ) : null}
-                  <a
-                    className={primaryButtonClass}
+                  <IntegrationPrimaryLink
+                    readOnly={readOnly}
                     href={`/api/integrations/dexcom/connect?return_to=${SETTINGS_RETURN}`}
                   >
                     Connect
-                  </a>
+                  </IntegrationPrimaryLink>
                 </>
               ) : initial.dexcom.shareCredentialsMode ? (
                 <>
                   <button
                     type="button"
                     className={syncButtonClass}
-                    disabled={busy !== null}
+                    disabled={controlsLocked}
                     onClick={() => void syncDexcom()}
                   >
                     {busy?.startsWith("sync-dexcom") ? "Syncing…" : "Sync"}
@@ -611,7 +703,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                     aria-haspopup="menu"
                     aria-expanded={openOverflow === "dexcom"}
                     className={secondaryIconButtonClass}
-                    disabled={busy !== null}
+                    disabled={controlsLocked}
                     onClick={() =>
                       setOpenOverflow((v) => (v === "dexcom" ? null : "dexcom"))
                     }
@@ -621,16 +713,16 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 </>
               ) : (
                 <>
-                  <a
-                    className={primaryButtonClass}
+                  <IntegrationPrimaryLink
+                    readOnly={readOnly}
                     href={`/api/integrations/dexcom/connect?return_to=${SETTINGS_RETURN}`}
                   >
                     Connect
-                  </a>
+                  </IntegrationPrimaryLink>
                   <button
                     type="button"
                     className={syncButtonClass}
-                    disabled={busy !== null}
+                    disabled={controlsLocked}
                     onClick={() => void syncDexcom()}
                   >
                     {busy?.startsWith("sync-dexcom") ? "Syncing…" : "Sync"}
@@ -640,7 +732,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                     aria-haspopup="menu"
                     aria-expanded={openOverflow === "dexcom"}
                     className={secondaryIconButtonClass}
-                    disabled={busy !== null}
+                    disabled={controlsLocked}
                     onClick={() =>
                       setOpenOverflow((v) => (v === "dexcom" ? null : "dexcom"))
                     }
@@ -657,6 +749,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                   <button
                     type="button"
                     className="min-h-10 w-full rounded-full px-2 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                    disabled={controlsLocked}
                     onClick={() => void syncDexcom(90)}
                   >
                     Sync last 90 days
@@ -664,7 +757,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                   <button
                     type="button"
                     className="mt-1 min-h-10 w-full rounded-full px-2 py-1.5 text-left text-sm text-red-700 hover:bg-red-50"
-                    disabled={busy !== null}
+                    disabled={controlsLocked}
                     onClick={() => {
                       setOpenOverflow(null);
                       void disconnect("dexcom");
@@ -696,18 +789,18 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
             </div>
             <div className="relative flex shrink-0 flex-wrap justify-end gap-2">
               {!initial.strava.connected ? (
-                <a
-                  className={primaryButtonClass}
+                <IntegrationPrimaryLink
+                  readOnly={readOnly}
                   href={`/api/integrations/strava/connect?return_to=${SETTINGS_RETURN}`}
                 >
                   Connect
-                </a>
+                </IntegrationPrimaryLink>
               ) : (
                 <>
                   <button
                     type="button"
                     className={syncButtonClass}
-                    disabled={busy !== null}
+                    disabled={controlsLocked}
                     onClick={() => void syncStrava()}
                   >
                     {busy?.startsWith("sync-strava") ? "Syncing…" : "Sync"}
@@ -717,7 +810,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                     aria-haspopup="menu"
                     aria-expanded={openOverflow === "strava"}
                     className={secondaryIconButtonClass}
-                    disabled={busy !== null}
+                    disabled={controlsLocked}
                     onClick={() =>
                       setOpenOverflow((v) => (v === "strava" ? null : "strava"))
                     }
@@ -734,6 +827,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                   <button
                     type="button"
                     className="min-h-10 w-full rounded-full px-2 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                    disabled={controlsLocked}
                     onClick={() => void syncStrava(90)}
                   >
                     Sync last 90 days
@@ -741,7 +835,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                   <button
                     type="button"
                     className="mt-1 min-h-10 w-full rounded-full px-2 py-1.5 text-left text-sm text-red-700 hover:bg-red-50"
-                    disabled={busy !== null}
+                    disabled={controlsLocked}
                     onClick={() => {
                       setOpenOverflow(null);
                       void disconnect("strava");
@@ -795,7 +889,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                 <button
                   type="button"
                   className={primaryButtonClass}
-                  disabled={busy !== null}
+                  disabled={controlsLocked}
                   onClick={() => void connectSteps()}
                 >
                   {busy === "connect-steps" ? "Connecting…" : "Connect"}
@@ -805,7 +899,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                   <button
                     type="button"
                     className={syncButtonClass}
-                    disabled={busy !== null}
+                    disabled={controlsLocked}
                     title="Reload this page’s step counts from the server (after your Shortcut POSTs)"
                     onClick={() => void pullSteps()}
                   >
@@ -816,7 +910,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                     aria-haspopup="menu"
                     aria-expanded={openOverflow === "steps"}
                     className={secondaryIconButtonClass}
-                    disabled={busy !== null}
+                    disabled={controlsLocked}
                     onClick={() => setOpenOverflow((v) => (v === "steps" ? null : "steps"))}
                   >
                     …
@@ -831,24 +925,24 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                   <button
                     type="button"
                     className="min-h-10 w-full rounded-full px-2 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                    disabled={controlsLocked}
                     title={
-                      browserIsLocalDev === true
+                      browserIsLocalDev
                         ? "Import steps from the Shortcuts file on this machine"
-                        : browserIsLocalDev === false
-                          ? "Copy your personal Shortcut POST URL (same as Copy URL below)"
-                          : undefined
+                        : "Copy your personal Shortcut POST URL (same as Copy URL below)"
                     }
                     onClick={() => void localSyncSteps()}
                   >
                     {busy === "local-sync-steps"
-                      ? browserIsLocalDev === false
-                        ? "Copying…"
-                        : "Syncing…"
+                      ? browserIsLocalDev
+                        ? "Syncing…"
+                        : "Copying…"
                       : "Local Sync"}
                   </button>
                   <button
                     type="button"
                     className="mt-1 min-h-10 w-full rounded-full px-2 py-1.5 text-left text-sm text-zinc-700 hover:bg-zinc-50"
+                    disabled={controlsLocked}
                     onClick={() => {
                       setOpenOverflow(null);
                       setStepsIngestModalOpen(true);
@@ -859,7 +953,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                   <button
                     type="button"
                     className="mt-1 min-h-10 w-full rounded-full px-2 py-1.5 text-left text-sm text-red-700 hover:bg-red-50"
-                    disabled={busy !== null}
+                    disabled={controlsLocked}
                     onClick={() => {
                       setOpenOverflow(null);
                       void disconnect("steps");
@@ -895,14 +989,23 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                   <p className="font-semibold text-zinc-900">Shortcuts setup (works for every user)</p>
                   <p>
                     Start by installing this shortcut on iPhone:{" "}
-                    <a
-                      href={APPLE_STEPS_SHORTCUT_URL}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-medium underline underline-offset-2"
-                    >
-                      Get Shortcut
-                    </a>
+                    {readOnly ? (
+                      <span
+                        className="font-medium text-zinc-500 underline decoration-zinc-300 underline-offset-2"
+                        title="Sign in to Align to install the Shortcut on your phone."
+                      >
+                        Get Shortcut
+                      </span>
+                    ) : (
+                      <a
+                        href={APPLE_STEPS_SHORTCUT_URL}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-medium underline underline-offset-2"
+                      >
+                        Get Shortcut
+                      </a>
+                    )}
                     .
                   </p>
                   <p>
@@ -957,10 +1060,11 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
                     <button
                       type="button"
                       className={secondaryButtonClass}
-                      disabled={busy !== null}
+                      disabled={controlsLocked}
                       title="Fetches the latest URL from the server, then copies it"
                       onClick={() => {
                         void (async () => {
+                          if (readOnly) return;
                           setBusy("copy-ingest-url");
                           setNotice(null);
                           try {
@@ -1020,7 +1124,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
           role="dialog"
           aria-modal="true"
           aria-label="Latest ingest rows"
-          onClick={() => setStepsIngestModalOpen(false)}
+          onClick={closeStepsIngestModal}
         >
           <div
             className="max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-xl"
@@ -1031,7 +1135,7 @@ export function SettingsIntegrations({ initial }: { initial: IntegrationSnapshot
               <button
                 type="button"
                 className="rounded-full border border-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
-                onClick={() => setStepsIngestModalOpen(false)}
+                onClick={closeStepsIngestModal}
               >
                 Close
               </button>

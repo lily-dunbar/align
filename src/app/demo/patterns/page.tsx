@@ -34,7 +34,7 @@ export default async function DemoPatternsPage({
   const atIso = new Date().toISOString();
 
   return (
-    <main className="mx-auto flex min-h-[100dvh] w-full max-w-6xl flex-col gap-8 bg-background px-4 py-8 md:px-8 md:py-10">
+    <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-6 bg-background px-4 py-6 md:gap-8 md:px-8 md:py-10">
       <PatternsInsightsShell
         activeWindow={window}
         timeZone={timeZone}

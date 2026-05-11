@@ -5,6 +5,7 @@ import { useCallback, useState, useTransition } from "react";
 
 import { ToggleSwitch } from "@/components/toggle-switch";
 import type { DisplayPreferences, UserPreferences } from "@/lib/user-display-preferences";
+import { uiPanelSurface, uiSoftCallout } from "@/lib/ui-surfaces";
 import {
   GLUCOSE_HIGH_MAX,
   GLUCOSE_HIGH_MIN,
@@ -237,25 +238,25 @@ export function OnboardingWizard({ initialPrefs }: { initialPrefs: UserPreferenc
       <h1 className="sr-only">Welcome to Align</h1>
 
       {error ? (
-        <p className="mx-auto mt-6 w-full max-w-2xl rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] px-4 py-3 text-sm text-zinc-700 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]">
+        <p className={`mx-auto mt-6 w-full max-w-2xl px-4 py-3 text-sm text-zinc-700 ${uiSoftCallout}`}>
           {error}
         </p>
       ) : null}
       {!error && (stravaOauthError || dexcomOauthError) ? (
-        <p className="mx-auto mt-6 w-full max-w-2xl rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] px-4 py-3 text-sm text-zinc-700 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]">
+        <p className={`mx-auto mt-6 w-full max-w-2xl px-4 py-3 text-sm text-zinc-700 ${uiSoftCallout}`}>
           {dexcomOauthError ? `Dexcom connection failed: ${dexcomOauthError}.` : null}
           {dexcomOauthError && stravaOauthError ? " " : null}
           {stravaOauthError ? `Strava connection failed: ${stravaOauthError}.` : null}
         </p>
       ) : null}
 
-      <div className="mx-auto mt-9 w-full max-w-2xl rounded-[1.5rem] border border-white/85 bg-white/95 p-6 shadow-[0_26px_70px_-30px_rgba(11,48,56,0.45)] ring-1 ring-black/[0.03] md:mt-10 md:p-8">
+      <div className={`mx-auto mt-9 w-full max-w-2xl p-6 md:mt-10 md:p-8 ${uiPanelSurface}`}>
         <p className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
           Step {idx} of {STEPS.length}
         </p>
         <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-zinc-100">
           <div
-            className="h-full rounded-full bg-[#0f6e68] transition-all duration-300"
+            className="h-full rounded-full bg-[#0f6e68] transition-all duration-300 motion-reduce:transition-none"
             style={{ width: `${progress}%` }}
           />
         </div>

@@ -1,4 +1,5 @@
 import { minDexcomDaysForWindow } from "@/lib/patterns/coverage-gates";
+import { uiSoftCallout } from "@/lib/ui-surfaces";
 import type { PatternWindowInclusion } from "@/lib/patterns/types";
 
 function formatYmdHuman(ymd: string): string {
@@ -17,8 +18,7 @@ function timeZoneShortLabel(iana: string): string {
   return leaf.replace(/_/g, " ");
 }
 
-const GRADIENT_NOTICE_CARD =
-  "w-full rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] px-4 py-3 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]";
+const INCLUSION_NOTICE_CARD = `w-full px-4 py-3 ${uiSoftCallout}`;
 
 type Props = {
   inclusion: PatternWindowInclusion;
@@ -33,13 +33,9 @@ export function PatternWindowInclusionSummary({ inclusion, timeZone, labelDays }
   const rangeLabel = a === b ? a : `${a} – ${b}`;
   const tzShort = timeZoneShortLabel(timeZone);
 
-  const line = [
-    rangeLabel,
-    tzShort,
-    `${inclusion.daysWithCgm.toLocaleString()} Dexcom`,
-    `${inclusion.daysWithSteps.toLocaleString()} steps`,
-    `${inclusion.activitiesCount.toLocaleString()} activities`,
-  ].join("\u00B7");
+  const cgmDays = inclusion.daysWithCgm.toLocaleString();
+  const stepDays = inclusion.daysWithSteps.toLocaleString();
+  const activityTotal = inclusion.activitiesCount.toLocaleString();
 
   const minDays = minDexcomDaysForWindow(labelDays);
   const thinCgm =
@@ -52,7 +48,7 @@ export function PatternWindowInclusionSummary({ inclusion, timeZone, labelDays }
   return (
     <div className="space-y-2">
       {thinCgm === "no" ? (
-        <div className={GRADIENT_NOTICE_CARD} role="status" aria-live="polite">
+        <div className={INCLUSION_NOTICE_CARD} role="status" aria-live="polite">
           <p className="text-sm leading-relaxed text-zinc-700">
             No Dexcom data in this range yet. Connect Dexcom in Settings, sync, then try again—or pick a
             shorter window if you only have a few recent days of readings.
@@ -60,7 +56,7 @@ export function PatternWindowInclusionSummary({ inclusion, timeZone, labelDays }
         </div>
       ) : thinCgm === "thin" ? (
         <p
-          className={`${GRADIENT_NOTICE_CARD} text-sm leading-relaxed text-zinc-700`}
+          className={`${INCLUSION_NOTICE_CARD} text-sm leading-relaxed text-zinc-700`}
           role="status"
         >
           Not enough Dexcom coverage for a strong {labelDays}-day view—only{" "}
@@ -69,13 +65,47 @@ export function PatternWindowInclusionSummary({ inclusion, timeZone, labelDays }
           range). Insights may look like a shorter window; sync Dexcom or try 7 days.
         </p>
       ) : null}
-      <p
+      <div
         className="text-xs leading-relaxed text-align-muted"
         title={`Full range and time zone: ${inclusion.rangeStartYmd} → ${inclusion.rangeEndYmd}, ${timeZone}`}
       >
-        <span className="sr-only">Data coverage for this window: </span>
-        {line}
-      </p>
+        <p className="sr-only">
+          Data coverage for this window: {rangeLabel}, {tzShort} time. CGM on {cgmDays} local day
+          {inclusion.daysWithCgm === 1 ? "" : "s"}, steps on {stepDays} local day
+          {inclusion.daysWithSteps === 1 ? "" : "s"}, {activityTotal} logged workouts and activities.
+        </p>
+        <p className="text-zinc-700">
+          <span className="font-medium text-zinc-800">{rangeLabel}</span>
+          <span className="text-zinc-400" aria-hidden>
+            {" "}
+            ·{" "}
+          </span>
+          <span>{tzShort}</span>
+          <span className="text-zinc-500"> time</span>
+        </p>
+        <p className="mt-1 text-zinc-600">
+          <span>
+            CGM on <span className="tabular-nums text-zinc-800">{cgmDays}</span> local day
+            {inclusion.daysWithCgm === 1 ? "" : "s"}
+          </span>
+          <span className="text-zinc-400" aria-hidden>
+            {" "}
+            ·{" "}
+          </span>
+          <span>
+            Steps on <span className="tabular-nums text-zinc-800">{stepDays}</span> local day
+            {inclusion.daysWithSteps === 1 ? "" : "s"}
+          </span>
+          <span className="text-zinc-400" aria-hidden>
+            {" "}
+            ·{" "}
+          </span>
+          <span>
+            <span className="tabular-nums text-zinc-800">{activityTotal}</span> logged workouts and
+            activities
+          </span>
+        </p>
+      </div>
     </div>
   );
 }

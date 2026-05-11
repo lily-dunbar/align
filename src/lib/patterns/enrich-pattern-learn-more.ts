@@ -130,7 +130,7 @@ function buildLearnMore(p: PatternInsightJson, ctx: PatternFeatureContext): Patt
   if (stem === "demo-temporal-lunch") {
     return {
       explanation:
-        "The thick curve is your average glucose by clock hour for the dates you selected. Faint curves are individual local days on the same 24-hour axis so you can see how repeatable the post-lunch bump is versus one-off noise. The shaded band highlights the lunch-to-early-afternoon window.",
+        "The thick curve is your average glucose by clock hour for the dates you selected. Faint curves are individual local days on the same 24-hour axis so you can see how much midday variability there is versus a smooth average. The shaded band highlights the lunch-to-early-afternoon window.",
       contributingDaysYmd: sampleDays(ev.cgmDaysSample),
       contributingNote: baseNote(),
       chart: hourChart(ctx, [[11, 13]]),
@@ -279,7 +279,7 @@ function buildLearnMore(p: PatternInsightJson, ctx: PatternFeatureContext): Patt
     const ymds = [...new Set(ev.sessionDeltas.map((d) => d.startYmd))].sort();
     return {
       explanation:
-        "Same before-vs-during comparison as the long-run card, but including shorter sessions when distance or type still looks run-like. Each bar is one workout; hover for date and label.",
+        "Each bar is one workout: glucose averaged during the session versus a short window just before start. Values below zero mean glucose tended to fall while you were moving; hover for date and sport label.",
       contributingDaysYmd: sampleDays(ymds.length ? ymds : ev.cgmDaysSample),
       contributingNote: baseNote(),
       chart:

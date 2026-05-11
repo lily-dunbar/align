@@ -7,6 +7,7 @@ import { AlignMetricCard } from "@/components/align-metric-card";
 import { DaySummaryCardsSkeleton } from "@/components/skeleton";
 import { useEffectiveTimeZone } from "@/hooks/use-effective-timezone";
 import { DAY_DATA_CHANGED_EVENT } from "@/lib/day-view-events";
+import { uiSoftCallout } from "@/lib/ui-surfaces";
 import { useResolvedDayYmd } from "@/lib/use-resolved-day-ymd";
 
 type DaySummaryResponse = {
@@ -73,7 +74,7 @@ export function DaySummaryCards({ dateYmd }: Props) {
 
   if (error) {
     return (
-      <section className="w-full rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] p-3 text-left text-sm text-zinc-700 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]">
+      <section className={`w-full p-3 text-left text-sm ${uiSoftCallout}`}>
         Summary load error: {error}
       </section>
     );

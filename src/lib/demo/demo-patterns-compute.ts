@@ -5,6 +5,7 @@ import {
   getDemoGlucoseDayState,
 } from "@/lib/demo/demo-bg-curve";
 import {
+  DEMO_RUN_DIP_DEPTH,
   calendarYmdIsWeekend,
   getDemoDayProfile,
 } from "@/lib/demo/demo-day-profile";
@@ -59,8 +60,9 @@ function percentileFromSorted(sorted: number[], p: number): number | null {
 }
 
 function runDeltaMgdlForDay(ymd: string, seed: string): number {
-  // Deterministic per day, with realistic run-time drops.
-  return -(24 + (hashInt(`${seed}|run-delta|${ymd}`) % 22));
+  // Tight band around ~35 mg/dL drop to match demo Patterns headline.
+  const j = hashInt(`${seed}|run-delta|${ymd}`) % 9;
+  return -(DEMO_RUN_DIP_DEPTH - 3 + j);
 }
 
 function swimDeltaMgdlForDay(ymd: string, seed: string): number {

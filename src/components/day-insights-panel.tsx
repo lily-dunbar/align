@@ -12,7 +12,12 @@ import { metersToMilesDisplay } from "@/lib/distance-units";
 import { DAY_DATA_CHANGED_EVENT, OPEN_MANUAL_MODAL_EVENT } from "@/lib/day-view-events";
 import { foodTypeAbsorptionHours, foodTypeTagLabel, parseFoodTypeTag } from "@/lib/food-type-tag";
 import { inferMealPeriodFromLocalTime } from "@/lib/infer-meal-period";
+import {
+  PANEL_FOOD_CARBS_CHIP_LOGGED,
+  PANEL_KIND_BADGE_CLASS,
+} from "@/lib/chart-activity-layer-tokens";
 import { parseSleepRecurrenceMeta, type SleepRecurrenceFreq } from "@/lib/manual/sleep-recurrence";
+import { uiPanelSurface, uiSoftCallout } from "@/lib/ui-surfaces";
 import { useResolvedDayYmd } from "@/lib/use-resolved-day-ymd";
 
 type DayResponse = {
@@ -90,15 +95,12 @@ const KIND_LABEL: Record<ActivityKind, string> = {
   sleep: "Sleep",
 };
 
-/** Matches `daily-view-chart` ReferenceArea fills: activity #f9a8a4, food #EFF1CD, sleep #DAE6E5 */
+/** Matches `daily-view-chart` workout / food / sleep bands — see chart-activity-layer-tokens */
 const KIND_BADGE_CLASS: Record<ActivityKind, string> = {
-  manual:
-    "border border-[color:rgb(249_168_164_/_0.45)] bg-[color:rgb(249_168_164_/_0.22)] text-[#9a3412]",
-  strava:
-    "border border-[color:rgb(249_168_164_/_0.45)] bg-[color:rgb(249_168_164_/_0.22)] text-[#9a3412]",
-  food: "border border-[color:rgb(212_225_150_/_0.55)] bg-[#EFF1CD] text-[#3f6212]",
-  sleep:
-    "border border-[color:rgb(148_187_182_/_0.55)] bg-[color:rgb(218_230_229_/_0.92)] text-[#115e59]",
+  manual: PANEL_KIND_BADGE_CLASS.workout,
+  strava: PANEL_KIND_BADGE_CLASS.workout,
+  food: PANEL_KIND_BADGE_CLASS.food,
+  sleep: PANEL_KIND_BADGE_CLASS.sleep,
 };
 
 function durationMinutes(startIso: string, endIso: string) {
@@ -390,7 +392,7 @@ function IconHelp({ className }: { className?: string }) {
 }
 
 const BG_DELTA_CHIP_CLASS: Record<BgDeltaTone, string> = {
-  // Use neutral brand tones (not good/bad semantics): rise = TIR green, fall = Avg Glucose green.
+  // Neutral brand tones (not good/bad semantics): rise = TIR / forest mint, fall = avg-glucose green.
   up: "border-[#bcd8cf]/90 bg-[#edf4f1] text-[#1b4d43] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)]",
   down:
     "border-[#dbe4c8]/90 bg-[#f5f8ee] text-[#45532a] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.6)]",
@@ -433,14 +435,6 @@ function BgDeltaChip({ delta }: { delta: number | null }) {
     </div>
   );
 }
-
-/** Left accent on cards — mirrors chart band hues */
-const KIND_ACCENT_CLASS: Record<ActivityKind, string> = {
-  manual: "border-l-4 border-l-[#f9a8a4]",
-  strava: "border-l-4 border-l-[#f9a8a4]",
-  food: "border-l-4 border-l-[#c8d87a]",
-  sleep: "border-l-4 border-l-[#94b8b3]",
-};
 
 export function DayInsightsPanel({ dateYmd }: Props) {
   const pathname = usePathname();
@@ -608,10 +602,7 @@ export function DayInsightsPanel({ dateYmd }: Props) {
 
   if (!isLoaded) {
     return (
-      <section
-        className="w-full rounded-2xl border border-align-border/90 bg-white/90 p-5 ring-1 ring-black/[0.03] backdrop-blur-[2px] md:p-6"
-        aria-busy
-      >
+      <section className={`w-full p-5 md:p-6 ${uiPanelSurface}`} aria-busy>
         <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
           Activities
         </h2>
@@ -625,17 +616,14 @@ export function DayInsightsPanel({ dateYmd }: Props) {
   }
 
   return (
-    <section
-      className="w-full rounded-2xl border border-align-border/90 bg-white/95 p-5 ring-1 ring-black/[0.03] md:p-6"
-      aria-busy={loading}
-    >
+    <section className={`w-full p-5 md:p-6 ${uiPanelSurface}`} aria-busy={loading}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="min-w-0 text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
           Activities
         </h2>
       </div>
       {error ? (
-        <p className="mt-3 rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] px-3 py-2 text-sm text-zinc-700 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]">
+        <p className={`mt-3 px-3 py-2 text-sm ${uiSoftCallout}`}>
           {error}
         </p>
       ) : null}
@@ -647,7 +635,7 @@ export function DayInsightsPanel({ dateYmd }: Props) {
           {activities.map((item) => (
             <li
               key={item.id}
-              className={`overflow-hidden rounded-xl border border-align-border/75 bg-white shadow-sm shadow-black/[0.03] ring-1 ring-black/[0.025] transition hover:border-align-border hover:shadow-md ${KIND_ACCENT_CLASS[item.kind]}`}
+              className="overflow-hidden rounded-xl border border-align-border/70 bg-white shadow-sm shadow-black/[0.02] transition hover:border-align-border/90"
             >
               <div className="flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
                 <div className="min-w-0 flex-1 space-y-3">
@@ -668,7 +656,7 @@ export function DayInsightsPanel({ dateYmd }: Props) {
                     ) : null}
                     {item.kind === "sleep" && item.recurrenceFreq ? (
                       <span
-                        className="inline-flex shrink-0 items-center text-teal-700"
+                        className="inline-flex shrink-0 items-center text-zinc-500"
                         title={`Recurring sleep: ${item.recurrenceFreq}`}
                         aria-label={`Recurring sleep: ${item.recurrenceFreq}`}
                       >
@@ -680,16 +668,16 @@ export function DayInsightsPanel({ dateYmd }: Props) {
                     </h3>
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    <span className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-50/90 px-2.5 py-1.5 text-xs text-zinc-800 ring-1 ring-black/[0.05]">
+                    <span className="inline-flex items-center gap-1.5 rounded-lg border border-align-border/50 bg-zinc-50/80 px-2.5 py-1.5 text-xs text-zinc-800">
                       <IconCalendar className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
                       <span className="font-medium">{formatTimeRangeLocal(item.startIso, item.endIso, timeZone)}</span>
                     </span>
                     {item.kind === "food" ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-50/90 px-2.5 py-1.5 text-xs text-zinc-800 ring-1 ring-black/[0.05]">
+                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-align-border/50 bg-zinc-50/80 px-2.5 py-1.5 text-xs text-zinc-800">
                         <span className="font-medium">{item.foodTypeLabel ?? "Medium acting"}</span>
                       </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-50/90 px-2.5 py-1.5 text-xs text-zinc-800 ring-1 ring-black/[0.05]">
+                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-align-border/50 bg-zinc-50/80 px-2.5 py-1.5 text-xs text-zinc-800">
                         <IconClock className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
                         <span className="font-medium">{formatDuration(item.durationMin)}</span>
                       </span>
@@ -697,16 +685,16 @@ export function DayInsightsPanel({ dateYmd }: Props) {
                     {(item.kind === "manual" || item.kind === "strava") &&
                     item.distanceMeters != null &&
                     item.distanceMeters > 0 ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-50/90 px-2.5 py-1.5 text-xs text-zinc-800 ring-1 ring-black/[0.05]">
+                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-align-border/50 bg-zinc-50/80 px-2.5 py-1.5 text-xs text-zinc-800">
                         <IconRoute className="h-3.5 w-3.5 shrink-0 text-zinc-500" aria-hidden />
                         <span className="font-medium tabular-nums">{formatDistanceMi(item.distanceMeters)}</span>
                       </span>
                     ) : null}
                     {item.kind === "food" ? (
                       <span
-                        className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium tabular-nums ring-1 ring-black/[0.04] ${
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium tabular-nums ${
                           item.carbsGrams != null
-                            ? "border border-[color:rgb(212_225_150_/_0.55)] bg-[#EFF1CD]/90 text-[#365314]"
+                            ? PANEL_FOOD_CARBS_CHIP_LOGGED
                             : "border border-zinc-200/90 bg-zinc-50/95 text-zinc-600"
                         }`}
                         title={item.carbsGrams == null ? "Carbs not logged for this food entry yet" : undefined}

@@ -111,6 +111,27 @@ export async function GET(request: NextRequest) {
 
   const { startUtc, endUtcExclusive } = bounds;
 
+  /**
+   * `?demo=1` (e.g. /demo daily chart) must always return synthetic streams—including hourly
+   * steps—so the graph matches the public demo even when a signed-in user has Demo Mode off
+   * in Settings (otherwise we would serve their real DB day, often without step buckets).
+   */
+  if (demoMode) {
+    const demoPayload = buildDemoDayApiPayload({
+      userId: PUBLIC_DEMO_USER_ID,
+      date: date ?? null,
+      timeZone,
+      startUtc,
+      endUtcExclusive,
+      prefs: {
+        ...prefs,
+        targetLowMgdl,
+        targetHighMgdl,
+      },
+    });
+    return NextResponse.json(demoPayload);
+  }
+
   if (await isDemoDataActive(effectiveUserId)) {
     const demoPayload = buildDemoDayApiPayload({
       userId: effectiveUserId,

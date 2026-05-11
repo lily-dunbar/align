@@ -3,6 +3,8 @@
 import { SignOutButton } from "@clerk/nextjs";
 import { useState } from "react";
 
+import { uiPanelSurface } from "@/lib/ui-surfaces";
+
 const DELETE_CONFIRM_PHRASE = "DELETE MY ACCOUNT";
 
 export function SettingsAccountCard() {
@@ -67,7 +69,7 @@ export function SettingsAccountCard() {
   }
 
   return (
-    <section className="w-full rounded-2xl border border-align-border/90 bg-white/90 p-5 ring-1 ring-black/[0.03]">
+    <section className={`w-full p-5 ${uiPanelSurface}`}>
       <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
         Account
       </h2>

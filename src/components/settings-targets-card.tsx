@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 import { Skeleton } from "@/components/skeleton";
 import type { UserPreferences } from "@/lib/user-display-preferences";
+import { uiPanelSurface } from "@/lib/ui-surfaces";
 import {
   GLUCOSE_HIGH_MAX,
   GLUCOSE_HIGH_MIN,
@@ -119,7 +120,7 @@ export function SettingsTargetsCard() {
     prefs != null && savedTargets != null && !targetsMatch(pickTargets(prefs), savedTargets);
 
   return (
-    <section className="w-full rounded-2xl border border-align-border/90 bg-white/90 p-5 ring-1 ring-black/[0.03]">
+    <section className={`w-full p-5 ${uiPanelSurface}`}>
       <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
         Targets
       </h2>

@@ -1,6 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { addDays } from "date-fns";
@@ -10,8 +9,17 @@ import { DailyViewChartSkeleton } from "@/components/skeleton";
 import { useEffectiveTimeZone } from "@/hooks/use-effective-timezone";
 import { DAY_DATA_CHANGED_EVENT } from "@/lib/day-view-events";
 import { foodTypeAbsorptionHours, parseFoodTypeTag } from "@/lib/food-type-tag";
-import { inferMealPeriodFromLocalTime } from "@/lib/infer-meal-period";
+import {
+  CHART_FOOD,
+  CHART_FOOD_LEGEND_SWATCH,
+  CHART_SLEEP,
+  CHART_SLEEP_LEGEND_SWATCH,
+  CHART_STEPS_BAR_FILL,
+  CHART_WORKOUT,
+  CHART_WORKOUT_LEGEND_SWATCH,
+} from "@/lib/chart-activity-layer-tokens";
 import { getLocalCalendarYmd } from "@/lib/local-calendar-ymd";
+import { uiHeroSurface, uiSoftCallout } from "@/lib/ui-surfaces";
 import { useResolvedDayYmd } from "@/lib/use-resolved-day-ymd";
 import {
   Bar,
@@ -139,18 +147,13 @@ const STEP_Y_MIN = 0;
 const STEP_Y_MAX = GLUCOSE_FLOOR;
 /** Smallest fraction of the step band used when an hour has steps (improves visibility for low counts). */
 const STEP_BAR_MIN_FRACTION = 0.14;
+/** Narrower bars + wider category gap read more like discrete hourly activity (less “solid wall”). */
+const STEP_BAR_MAX_SIZE = 18;
+const STEP_BAR_CATEGORY_GAP = "34%";
 const BG_AXIS_TICKS = [60, 120, 180, 240, 300] as const;
-const MOBILE_BG_AXIS_WIDTH = 46;
 const MOBILE_AXIS_LABEL_TOP_PAD_PCT = 6;
 const MOBILE_AXIS_LABEL_BOTTOM_PAD_PCT = 4;
 
-/** Sleep window shading; only overlaps real sleep vs viewed day (handles midnight crossing). */
-const SLEEP_BAND_FILL = "#DAE6E5";
-const SLEEP_BAND_FILL_OPACITY = 0.38;
-
-/** Food / carb absorption window (local clock) — not persisted; title heuristics only. */
-const FOOD_BAND_FILL = "#EFF1CD";
-const FOOD_BAND_FILL_OPACITY = 0.4;
 
 /** Rough absorption window for shaded band (hours from first bite). */
 function foodAbsorptionDurationHours(title: string, notes?: string | null): number {
@@ -198,17 +201,14 @@ function foodReferenceIntervalsForViewedDay(
   return [{ x1: lo, x2: hi }];
 }
 
-function foodBandAndIconCenter(
+function foodBandsForViewedDay(
   f: { eatenAt: string; title: string },
   viewedYmd: string,
   timeZone: string,
   xDomain: [number, number],
-): { segs: Array<{ x1: number; x2: number }>; iconX: number | null } {
+): Array<{ x1: number; x2: number }> {
   const hrs = foodAbsorptionDurationHours(f.title);
-  const segs = foodReferenceIntervalsForViewedDay(viewedYmd, f.eatenAt, hrs, timeZone, xDomain);
-  const iconX =
-    segs.length > 0 ? (segs[0]!.x1 + segs[0]!.x2) / 2 : null;
-  return { segs, iconX };
+  return foodReferenceIntervalsForViewedDay(viewedYmd, f.eatenAt, hrs, timeZone, xDomain);
 }
 
 function toLocalHourFraction(iso: string, timeZone: string) {
@@ -218,8 +218,11 @@ function toLocalHourFraction(iso: string, timeZone: string) {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+    hourCycle: "h23",
   }).formatToParts(date);
-  const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+  let hour = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+  // Some runtimes still emit 24 for midnight; normalize so bucketing stays in 0–23.
+  hour = ((hour % 24) + 24) % 24;
   const minute = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
   return hour + minute / 60;
 }
@@ -311,198 +314,6 @@ function activityBandXRange(
   return { x1, x2 };
 }
 
-function sleepBandIconX(seg: { x1: number; x2: number }): number {
-  return (seg.x1 + seg.x2) / 2;
-}
-
-function manualWorkoutEmoji(workoutType?: string | null): string {
-  const t = (workoutType ?? "").toLowerCase();
-  if (t.includes("run")) return "🏃";
-  if (t.includes("bike") || t.includes("ride") || t.includes("cycle")) return "🚴";
-  if (t.includes("swim")) return "🏊";
-  if (t.includes("walk") || t.includes("hike")) return "🚶";
-  return "🏃";
-}
-
-function stravaActivityEmoji(sportType?: string | null, activityType?: string | null): string {
-  const t = `${sportType ?? ""} ${activityType ?? ""}`.toLowerCase();
-  if (t.includes("run")) return "🏃";
-  if (t.includes("ride") || t.includes("bike") || t.includes("cycle")) return "🚴";
-  if (t.includes("swim")) return "🏊";
-  if (t.includes("walk") || t.includes("hike")) return "🚶";
-  return "🏃";
-}
-
-/** Recharts cartesian label viewBox (ReferenceLine provides width on the vertical segment). */
-type GlyphViewBox = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  upperWidth?: number;
-  lowerWidth?: number;
-};
-
-function trapezoidFromViewBox(box: GlyphViewBox) {
-  return {
-    x: box.x,
-    y: box.y,
-    upperWidth: box.upperWidth ?? box.width,
-    height: box.height,
-  };
-}
-
-/** Match Recharts `position="top"` for cartesian labels (see getCartesianPosition). */
-function labelXYTop(viewBox: GlyphViewBox | undefined, offset: number): { x: number; y: number } | null {
-  if (!viewBox) return null;
-  const { x, y, upperWidth, height } = trapezoidFromViewBox(viewBox);
-  const verticalSign = height >= 0 ? 1 : -1;
-  const verticalOffset = verticalSign * offset;
-  return { x: x + upperWidth / 2, y: y - verticalOffset };
-}
-
-function TimelineGlyphLabel({
-  viewBox,
-  offset = 10,
-  tooltip,
-  fontSize,
-  fill = "#333",
-  children,
-}: {
-  viewBox?: GlyphViewBox;
-  offset?: number;
-  tooltip: string;
-  fontSize: number;
-  fill?: string;
-  children: ReactNode;
-}) {
-  const pos = labelXYTop(viewBox, offset);
-  if (!pos) return null;
-  const hit = Math.max(28, fontSize * 1.35);
-  return (
-    <g className="pointer-events-auto" style={{ cursor: "default" }}>
-      <title>{tooltip}</title>
-      <rect
-        x={pos.x - hit / 2}
-        y={pos.y - hit * 0.72}
-        width={hit}
-        height={hit}
-        fill="transparent"
-      />
-      <text
-        x={pos.x}
-        y={pos.y}
-        fill={fill}
-        fontSize={fontSize}
-        textAnchor="middle"
-        dominantBaseline="auto"
-      >
-        {children}
-      </text>
-    </g>
-  );
-}
-
-function chartIconLabel(
-  tooltip: string,
-  emoji: string,
-  options?: { fontSize?: number; fill?: string; offset?: number },
-) {
-  const fontSize = options?.fontSize ?? 24;
-  const fill = options?.fill;
-  const offset = options?.offset ?? 10;
-  return {
-    position: "top" as const,
-    offset,
-    // Recharts passes full Label props; we only need cartesian viewBox + offset.
-    content: (props: { viewBox?: unknown; offset?: number }) => (
-      <TimelineGlyphLabel
-        viewBox={props.viewBox as GlyphViewBox | undefined}
-        offset={props.offset ?? offset}
-        tooltip={tooltip}
-        fontSize={fontSize}
-        fill={fill}
-      >
-        {emoji}
-      </TimelineGlyphLabel>
-    ),
-  };
-}
-
-function formatShortClock(iso: string, timeZone: string): string {
-  try {
-    return formatInTimeZone(new Date(iso), timeZone, "h:mm a");
-  } catch {
-    return "";
-  }
-}
-
-function formatElapsedSeconds(totalSec: number): string {
-  const s = Math.max(0, Math.round(totalSec));
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m} min`;
-  const h = Math.floor(m / 60);
-  const rm = m % 60;
-  return rm > 0 ? `${h}h ${rm}m` : `${h}h`;
-}
-
-function manualWorkoutTooltip(
-  w: DayApiResponse["streams"]["manualWorkouts"][number],
-  timeZone: string,
-): string {
-  const type = (w.workoutType?.trim() || "Workout").replace(/\s+/g, " ");
-  const start = formatShortClock(w.startedAt, timeZone);
-  if (!w.endedAt) {
-    return `${type} · ${start} · in progress`;
-  }
-  const end = formatShortClock(w.endedAt, timeZone);
-  const durSec = (new Date(w.endedAt).getTime() - new Date(w.startedAt).getTime()) / 1000;
-  const dur =
-    Number.isFinite(durSec) && durSec > 0 ? ` · ${formatElapsedSeconds(durSec)}` : "";
-  return `${type} · ${start}–${end}${dur}`;
-}
-
-function stravaActivityTooltipDetail(
-  a: NonNullable<DayApiResponse["streams"]["stravaActivities"]>[number],
-  timeZone: string,
-): string {
-  const type =
-    a.name?.trim() ||
-    `${a.sportType ?? ""} ${a.activityType ?? ""}`.trim().replace(/\s+/g, " ") ||
-    "Activity";
-  const start = formatShortClock(a.startAt, timeZone);
-  const endIso = stravaActivityEndIso(a);
-  const end = formatShortClock(endIso, timeZone);
-  let line = `${type} · ${start}–${end}`;
-  if (a.durationSec != null && a.durationSec > 0) {
-    line += ` · ${formatElapsedSeconds(a.durationSec)}`;
-  }
-  return line;
-}
-
-function sleepWindowTooltip(sleepStart: string, sleepEnd: string, timeZone: string): string {
-  const s = formatShortClock(sleepStart, timeZone);
-  const e = formatShortClock(sleepEnd, timeZone);
-  const durSec =
-    (new Date(sleepEnd).getTime() - new Date(sleepStart).getTime()) / 1000;
-  const dur =
-    Number.isFinite(durSec) && durSec > 60 ? ` · ${formatElapsedSeconds(durSec)}` : "";
-  return `Sleep · ${s}–${e}${dur}`;
-}
-
-function foodEntryTooltip(
-  f: DayApiResponse["streams"]["foodEntries"][number],
-  timeZone: string,
-): string {
-  const title = (f.title.trim() || "Food").replace(/\s+/g, " ");
-  const { label: mealHint } = inferMealPeriodFromLocalTime(f.eatenAt, timeZone);
-  const when = formatShortClock(f.eatenAt, timeZone);
-  const hrs = foodAbsorptionDurationHours(f.title, f.notes);
-  const windowLabel = hrs === 1 ? "~1h" : `~${hrs}h`;
-  return `${title} · ${mealHint} · ${when} · ${windowLabel} absorption window (modeled)`;
-}
-
 function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
   useEffect(() => {
@@ -528,15 +339,22 @@ function hourLabel(v: number) {
 function CombinedDayTooltip({ active, label, payload }: TooltipContentProps) {
   const row = payload?.[0]?.payload as ChartRow | undefined;
   if (!active || !row) return null;
+  const t = hourLabel(Number(label));
   return (
-    <div className="rounded-xl border border-align-border/90 bg-white/95 px-3 py-2 text-xs shadow-lg shadow-black/5 ring-1 ring-black/[0.04] backdrop-blur-sm">
-      <p className="font-medium text-zinc-800">Time: {hourLabel(Number(label))}</p>
+    <div className="min-w-[10.5rem] rounded-xl border border-align-border/75 bg-white/98 px-3.5 py-2.5 text-xs shadow-md shadow-black/[0.06] backdrop-blur-md">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">{t}</p>
       {row.glucose != null ? (
-        <p className="text-zinc-700">Glucose: {row.glucose} mg/dL</p>
+        <p className="mt-1.5 flex items-baseline gap-1.5">
+          <span className="text-lg font-semibold tabular-nums text-align-text-glucose">{row.glucose}</span>
+          <span className="text-[11px] font-medium text-zinc-500">mg/dL</span>
+        </p>
       ) : (
-        <p className="text-zinc-500">No glucose in this hour</p>
+        <p className="mt-1.5 text-[13px] text-zinc-500">No glucose this hour</p>
       )}
-      <p className="text-zinc-600">Steps: {row.steps}</p>
+      <p className="mt-2 border-t border-zinc-100 pt-2 text-[11px] text-zinc-600">
+        <span className="font-medium text-align-text-steps">Steps</span>{" "}
+        <span className="tabular-nums font-semibold text-align-text-steps">{row.steps.toLocaleString()}</span>
+      </p>
     </div>
   );
 }
@@ -801,7 +619,7 @@ export function DailyViewChart({ dateYmd }: Props) {
 
   if (error) {
     return (
-      <section className="w-full rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] p-4 text-sm text-zinc-700 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]">
+      <section className={`w-full p-4 text-sm ${uiSoftCallout}`}>
         Daily chart error: {error}
       </section>
     );
@@ -814,7 +632,7 @@ export function DailyViewChart({ dateYmd }: Props) {
   const tz = payload.day.timeZone;
   const low = payload.aggregates.tir.targetLowMgdl;
   const high = payload.aggregates.tir.targetHighMgdl;
-  const showSteps = prefs?.showSteps ?? true;
+  const showSteps = isDemoRoute ? true : (prefs?.showSteps ?? true);
   const showActivity = prefs?.showActivity ?? true;
   const showSleep = prefs?.showSleep ?? true;
   const showFood = prefs?.showFood ?? true;
@@ -829,14 +647,14 @@ export function DailyViewChart({ dateYmd }: Props) {
   const xTicks = timelineTicks(effectiveTimelineWindow, xDomain);
 
   const chartMargins = {
-    top: 42,
+    top: 28,
     right: isMobileScreen ? 8 : 12,
     bottom: 8,
     left: isMobileScreen ? 0 : isVerySmallScreen ? 0 : 2,
   };
 
   return (
-    <section className="w-full min-w-0 rounded-2xl border border-align-border/90 bg-white/90 p-5 text-left ring-1 ring-black/[0.03] backdrop-blur-[2px] md:p-6">
+    <section className={`w-full min-w-0 p-5 text-left md:p-6 ${uiHeroSurface}`}>
       <div className="flex flex-row items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="text-xs font-semibold uppercase tracking-[0.12em] text-align-muted">
@@ -849,7 +667,7 @@ export function DailyViewChart({ dateYmd }: Props) {
               type="button"
               disabled={reloadBusy}
               onClick={() => void reloadLatestData()}
-              className="inline-flex min-h-9 items-center justify-center rounded-full border border-align-border/90 bg-white px-3 py-1 text-[11px] font-semibold text-zinc-700 ring-1 ring-black/[0.03] transition hover:bg-align-subtle disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex min-h-9 items-center justify-center rounded-full border border-align-border/80 bg-white px-3 py-1 text-[11px] font-semibold text-zinc-700 transition hover:bg-align-subtle disabled:cursor-not-allowed disabled:opacity-60"
             >
               {reloadBusy ? "Refreshing…" : "Refresh"}
             </button>
@@ -876,8 +694,8 @@ export function DailyViewChart({ dateYmd }: Props) {
                   selected
                     ? "inline-flex min-h-9 min-w-[2.9rem] items-center justify-center rounded-full bg-align-forest px-2.5 py-1 text-center text-[11px] font-medium leading-none text-white shadow-sm shadow-black/10"
                     : disabled
-                      ? "inline-flex min-h-9 min-w-[2.9rem] items-center justify-center cursor-not-allowed rounded-full bg-zinc-100 px-2.5 py-1 text-center text-[11px] font-medium leading-none text-zinc-400 ring-1 ring-black/[0.04]"
-                      : "inline-flex min-h-9 min-w-[2.9rem] items-center justify-center rounded-full bg-align-subtle px-2.5 py-1 text-center text-[11px] font-medium leading-none text-zinc-600 ring-1 ring-black/[0.04] hover:bg-white"
+                      ? "inline-flex min-h-9 min-w-[2.9rem] items-center justify-center cursor-not-allowed rounded-full border border-transparent bg-zinc-100 px-2.5 py-1 text-center text-[11px] font-medium leading-none text-zinc-400"
+                      : "inline-flex min-h-9 min-w-[2.9rem] items-center justify-center rounded-full border border-transparent bg-align-subtle px-2.5 py-1 text-center text-[11px] font-medium leading-none text-zinc-600 hover:border-align-border/50 hover:bg-white"
                 }
               >
                 {label}
@@ -887,13 +705,62 @@ export function DailyViewChart({ dateYmd }: Props) {
         </div>
       </div>
       <div
+        className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-align-border-soft/80 pb-4 text-sm font-medium text-zinc-700"
+        aria-label="Chart legend"
+      >
+        <span className="inline-flex items-center gap-2.5">
+          <span className="h-1 w-9 shrink-0 rounded-full bg-align-chart-glucose" aria-hidden />
+          Glucose (mg/dL)
+        </span>
+        {showSleep ? (
+          <span className="inline-flex items-center gap-2.5">
+            <span
+              className="h-1 w-9 shrink-0 rounded-full border border-black/[0.06] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)]"
+              style={{ backgroundColor: CHART_SLEEP_LEGEND_SWATCH }}
+              aria-hidden
+            />
+            Sleep
+          </span>
+        ) : null}
+        {showFood ? (
+          <span className="inline-flex items-center gap-2.5">
+            <span
+              className="h-1 w-9 shrink-0 rounded-full border border-black/[0.06] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)]"
+              style={{ backgroundColor: CHART_FOOD_LEGEND_SWATCH }}
+              aria-hidden
+            />
+            Meal
+          </span>
+        ) : null}
+        {showActivity ? (
+          <span className="inline-flex items-center gap-2.5">
+            <span
+              className="h-1 w-9 shrink-0 rounded-full border border-black/[0.06]"
+              style={{ backgroundColor: CHART_WORKOUT_LEGEND_SWATCH }}
+              aria-hidden
+            />
+            Workout
+          </span>
+        ) : null}
+        {showSteps ? (
+          <span className="inline-flex items-center gap-2.5">
+            <span
+              className="h-1 w-9 shrink-0 rounded-full border border-black/[0.06]"
+              style={{ backgroundColor: CHART_STEPS_BAR_FILL, opacity: 0.92 }}
+              aria-hidden
+            />
+            Steps
+          </span>
+        ) : null}
+      </div>
+      <div
         key={resolvedDateYmd}
-        className="mt-4 h-[22rem] min-h-[20rem] w-full min-w-0 rounded-xl bg-gradient-to-b from-align-subtle/90 to-align-canvas/40 p-1.5 ring-1 ring-inset ring-black/[0.03] motion-safe:animate-[alignChartEnter_0.38s_ease-out_both] motion-reduce:animate-none sm:h-96 sm:p-2"
+        className="mt-3 h-[22rem] min-h-[20rem] w-full min-w-0 rounded-xl border border-align-border/45 bg-transparent p-1.5 motion-safe:animate-[alignChartEnter_0.38s_ease-out_both] motion-reduce:animate-none sm:h-96 sm:p-2"
       >
         <div className="flex h-full min-h-0 w-full">
           {isMobileScreen ? (
             <div
-              className={`flex h-full shrink-0 flex-col border-r border-black/[0.06] bg-gradient-to-b from-align-subtle/90 to-align-canvas/40 ${
+              className={`flex h-full shrink-0 flex-col border-r border-black/[0.06] bg-transparent ${
                 isVerySmallScreen ? "w-14" : "w-12"
               }`}
               aria-hidden
@@ -921,19 +788,13 @@ export function DailyViewChart({ dateYmd }: Props) {
           <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden">
             <div className={isMobileScreen ? "h-full min-w-[38rem]" : "h-full w-full"}>
               <ResponsiveContainer width="100%" height="100%" minWidth={280} minHeight={260}>
-                <ComposedChart data={chartData} margin={chartMargins}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e4ebea" />
-            {showSteps ? (
-              <ReferenceArea
-                x1={xMin}
-                x2={xMax}
-                y1={STEP_Y_MIN}
-                y2={GLUCOSE_FLOOR}
-                fill="#ebeff2"
-                fillOpacity={0.85}
-                ifOverflow="extendDomain"
-              />
-            ) : null}
+                <ComposedChart
+                  data={chartData}
+                  margin={chartMargins}
+                  barCategoryGap={STEP_BAR_CATEGORY_GAP}
+                  barGap={0}
+                >
+            <CartesianGrid strokeDasharray="4 6" stroke="#d5dedb" strokeOpacity={0.85} vertical />
             {showSleep && payload.streams.sleepWindows.length > 0
               ? payload.streams.sleepWindows.flatMap((s) => {
                   const segs = sleepReferenceIntervalsForViewedDay(
@@ -943,29 +804,18 @@ export function DailyViewChart({ dateYmd }: Props) {
                     tz,
                     xDomain,
                   );
-                  const areas = segs.map((seg, i) => (
+                  return segs.map((seg, i) => (
                     <ReferenceArea
                       key={`sleep-${s.id}-${i}`}
                       x1={seg.x1}
                       x2={seg.x2}
                       y1={GLUCOSE_FLOOR}
                       y2={300}
-                      fill={SLEEP_BAND_FILL}
-                      fillOpacity={SLEEP_BAND_FILL_OPACITY}
+                      fill={CHART_SLEEP.fill}
+                      fillOpacity={CHART_SLEEP.fillOpacity}
                       ifOverflow="extendDomain"
                     />
                   ));
-                  const icons = segs.map((seg, i) => (
-                    <ReferenceLine
-                      key={`sleep-icon-${s.id}-${i}`}
-                      x={sleepBandIconX(seg)}
-                      stroke="transparent"
-                      strokeWidth={0}
-                      zIndex={35}
-                      label={chartIconLabel(sleepWindowTooltip(s.sleepStart, s.sleepEnd, tz), "😴")}
-                    />
-                  ));
-                  return [...areas, ...icons];
                 })
               : null}
             {showActivity
@@ -974,30 +824,18 @@ export function DailyViewChart({ dateYmd }: Props) {
                   const clipped = clipHourSegmentToTimeline(raw.x1, raw.x2, xDomain);
                   if (!clipped) return [];
                   const { x1, x2 } = clipped;
-                  const iconX = (x1 + x2) / 2;
                   return [
-                      <ReferenceArea
-                        key={`workout-${w.id}`}
-                        x1={x1}
-                        x2={x2}
-                        y1={GLUCOSE_FLOOR}
-                        y2={300}
-                        fill="#f9a8a4"
-                        fillOpacity={0.16}
-                        ifOverflow="hidden"
-                      />,
-                      <ReferenceLine
-                        key={`workout-icon-${w.id}`}
-                        x={iconX}
-                        stroke="transparent"
-                        strokeWidth={0}
-                        zIndex={35}
-                        label={chartIconLabel(
-                          manualWorkoutTooltip(w, tz),
-                          manualWorkoutEmoji(w.workoutType),
-                        )}
-                      />
-                    ];
+                    <ReferenceArea
+                      key={`workout-${w.id}`}
+                      x1={x1}
+                      x2={x2}
+                      y1={GLUCOSE_FLOOR}
+                      y2={300}
+                      fill={CHART_WORKOUT.fill}
+                      fillOpacity={CHART_WORKOUT.fillOpacity}
+                      ifOverflow="hidden"
+                    />,
+                  ];
                 })
               : null}
             {showActivity
@@ -1006,71 +844,40 @@ export function DailyViewChart({ dateYmd }: Props) {
                   const clipped = clipHourSegmentToTimeline(raw.x1, raw.x2, xDomain);
                   if (!clipped) return [];
                   const { x1, x2 } = clipped;
-                  const iconX = (x1 + x2) / 2;
                   return [
-                      <ReferenceArea
-                        key={`strava-${a.id}`}
-                        x1={x1}
-                        x2={x2}
-                        y1={GLUCOSE_FLOOR}
-                        y2={300}
-                        fill="#f9a8a4"
-                        fillOpacity={0.16}
-                        ifOverflow="hidden"
-                      />,
-                      <ReferenceLine
-                        key={`strava-icon-${a.id}`}
-                        x={iconX}
-                        stroke="transparent"
-                        strokeWidth={0}
-                        zIndex={35}
-                        label={chartIconLabel(
-                          stravaActivityTooltipDetail(a, tz),
-                          stravaActivityEmoji(a.sportType, a.activityType),
-                        )}
-                      />
-                    ];
+                    <ReferenceArea
+                      key={`strava-${a.id}`}
+                      x1={x1}
+                      x2={x2}
+                      y1={GLUCOSE_FLOOR}
+                      y2={300}
+                      fill={CHART_WORKOUT.fill}
+                      fillOpacity={CHART_WORKOUT.fillOpacity}
+                      ifOverflow="hidden"
+                    />,
+                  ];
                 })
               : null}
             {showFood
               ? payload.streams.foodEntries.flatMap((f) => {
-                  const { segs, iconX } = foodBandAndIconCenter(
-                    f,
-                    resolvedDateYmd,
-                    tz,
-                    xDomain,
-                  );
-                  const areas = segs.map((seg, i) => (
+                  const segs = foodBandsForViewedDay(f, resolvedDateYmd, tz, xDomain);
+                  return segs.map((seg, i) => (
                     <ReferenceArea
                       key={`food-band-${f.id}-${i}`}
                       x1={seg.x1}
                       x2={seg.x2}
                       y1={GLUCOSE_FLOOR}
                       y2={300}
-                      fill={FOOD_BAND_FILL}
-                      fillOpacity={FOOD_BAND_FILL_OPACITY}
+                      fill={CHART_FOOD.fill}
+                      fillOpacity={CHART_FOOD.fillOpacity}
                       ifOverflow="extendDomain"
                     />
                   ));
-                  const icon =
-                    iconX != null ? (
-                      <ReferenceLine
-                        key={`food-icon-${f.id}`}
-                        x={iconX}
-                        stroke="transparent"
-                        strokeWidth={0}
-                        zIndex={40}
-                        label={chartIconLabel(foodEntryTooltip(f, tz), "🍽", {
-                          fill: "#166534",
-                        })}
-                      />
-                    ) : null;
-                  return [...areas, icon].filter((n) => n != null);
                 })
               : null}
 
-            <ReferenceLine y={low} stroke="#c9a227" strokeDasharray="6 4" strokeOpacity={0.85} />
-            <ReferenceLine y={high} stroke="#c9a227" strokeDasharray="6 4" strokeOpacity={0.85} />
+            <ReferenceLine y={low} stroke="#b8982a" strokeDasharray="5 5" strokeWidth={1.25} strokeOpacity={0.75} />
+            <ReferenceLine y={high} stroke="#b8982a" strokeDasharray="5 5" strokeWidth={1.25} strokeOpacity={0.75} />
 
             <XAxis
               type="number"
@@ -1078,40 +885,59 @@ export function DailyViewChart({ dateYmd }: Props) {
               domain={[xMin, xMax]}
               ticks={xTicks}
               tickFormatter={hourLabel}
-              tick={{ fontSize: 11 }}
+              tick={{ fontSize: 11, fill: "#5c6b68" }}
+              tickLine={{ stroke: "#c5d1ce" }}
+              axisLine={{ stroke: "#c5d1ce" }}
               allowDataOverflow
               {...(effectiveTimelineWindow === "12h"
                 ? { niceTicks: "none" as const, padding: { left: 0, right: 0 } }
                 : {})}
             />
-                {!isMobileScreen ? (
-                  <YAxis
-                    type="number"
-                    domain={[STEP_Y_MIN, 300]}
-                    ticks={[...BG_AXIS_TICKS]}
-                    tick={{
-                      fontSize: isVerySmallScreen ? 10 : 11,
-                      fill: "#4b5563",
-                      fontWeight: 500,
-                    }}
-                    tickFormatter={(v) => String(v)}
-                    tickLine={false}
-                    axisLine={false}
-                    interval={0}
-                    allowDecimals={false}
-                    width={40}
-                  />
-                ) : null}
+                {/*
+                  Recharts 3: Bar rectangles need a registered Y-axis + ticks; omitting YAxis on
+                  mobile used the implicit axis whose domain could exclude the step band (0–52),
+                  collapsing step bars to zero height. Keep the same domain always; hide on mobile
+                  because we render tick labels in the left gutter instead.
+                */}
+                <YAxis
+                  type="number"
+                  domain={[STEP_Y_MIN, 300]}
+                  ticks={[...BG_AXIS_TICKS]}
+                  hide={isMobileScreen}
+                  width={isMobileScreen ? 0 : 40}
+                  tick={
+                    isMobileScreen
+                      ? false
+                      : {
+                          fontSize: isVerySmallScreen ? 10 : 11,
+                          fill: "#5c6b68",
+                          fontWeight: 500,
+                        }
+                  }
+                  tickFormatter={(v) => String(v)}
+                  tickLine={false}
+                  axisLine={false}
+                  interval={0}
+                  allowDecimals={false}
+                />
 
-                <Tooltip content={CombinedDayTooltip} />
+                <Tooltip
+                  content={CombinedDayTooltip}
+                  cursor={{
+                    /* #2d6a3a @ 22% — matches `--color-align-chart-glucose` */
+                    stroke: "rgba(45, 106, 58, 0.22)",
+                    strokeWidth: 1,
+                  }}
+                />
 
                 {showSteps ? (
                   <Bar
                     key={`steps-${chartSeriesAnimKey}`}
                     dataKey="stepsRange"
-                    fill="#94a3b8"
+                    fill={CHART_STEPS_BAR_FILL}
+                    fillOpacity={0.9}
                     radius={[4, 4, 0, 0]}
-                    maxBarSize={36}
+                    maxBarSize={STEP_BAR_MAX_SIZE}
                     isAnimationActive={seriesAnimActive}
                     animationDuration={520}
                     animationEasing="ease-out"
@@ -1122,8 +948,8 @@ export function DailyViewChart({ dateYmd }: Props) {
                   type="monotone"
                   dataKey="glucose"
                   connectNulls
-                  stroke="#1b4d43"
-                  strokeWidth={2}
+                  stroke="var(--color-align-chart-glucose)"
+                  strokeWidth={2.25}
                   dot={false}
                   isAnimationActive={seriesAnimActive}
                   animationDuration={840}

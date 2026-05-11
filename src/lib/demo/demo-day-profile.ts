@@ -62,10 +62,17 @@ export const DEMO_RUN_DIP_DEPTH = 34;
 export function getDemoDayProfile(ymd: string, seed: string): DemoDayProfile {
   const rng = mulberry32(hashString(`${seed}|dayprof|${ymd}`));
   const weekend = calendarYmdIsWeekend(ymd);
-  const sun0 = ymdWeekdaySun0(ymd);
 
-  // Keep demo activity around a realistic "active day" baseline (~10k/day).
-  const dailySteps = Math.round(9000 + rng() * 2500);
+  // Mix sedentary and active days so Patterns "steps vs glucose" scatter shows both clusters.
+  const stepBin = hashString(`${seed}|stepbin|${ymd}`) % 100;
+  let dailySteps: number;
+  if (stepBin < 36) {
+    dailySteps = Math.round(1800 + rng() * 3800); // ~1.8k–5.6k
+  } else if (stepBin < 52) {
+    dailySteps = Math.round(5600 + rng() * 2600); // ~5.6k–8.2k (straddle typical goals)
+  } else {
+    dailySteps = Math.round(8800 + rng() * 5200); // ~8.8k–14k
+  }
   const stepsGlucoseShift = -clamp((dailySteps - 7000) / 250, -32, 12);
 
   const weekendGlucoseLift = weekend ? 10 + rng() * 10 : 0;

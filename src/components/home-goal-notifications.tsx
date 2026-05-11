@@ -5,6 +5,7 @@ import { useUser } from "@clerk/nextjs";
 
 import { useEffectiveTimeZone } from "@/hooks/use-effective-timezone";
 import { DAY_DATA_CHANGED_EVENT } from "@/lib/day-view-events";
+import { uiSoftCallout } from "@/lib/ui-surfaces";
 import { useResolvedDayYmd } from "@/lib/use-resolved-day-ymd";
 
 type Props = {
@@ -146,7 +147,9 @@ export function HomeGoalNotifications({ dateYmd }: Props) {
   }, [resolvedDateYmd, effectiveTz, cheerPrefix, firstName]);
 
   useEffect(() => {
-    void load();
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
   useEffect(() => {
@@ -163,7 +166,7 @@ export function HomeGoalNotifications({ dateYmd }: Props) {
   if (!firstNotice) return null;
 
   return (
-    <section className="w-full rounded-2xl border border-white/70 bg-[linear-gradient(135deg,rgba(221,234,229,0.78)_0%,rgba(212,227,246,0.8)_52%,rgba(243,245,235,0.78)_100%)] px-4 py-3 shadow-[0_8px_18px_-16px_rgba(35,84,92,0.3)] ring-1 ring-black/[0.025]">
+    <section className={`w-full px-4 py-3 ${uiSoftCallout}`}>
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <h3 className="text-sm font-semibold tracking-tight text-zinc-900">{firstNotice.title}</h3>

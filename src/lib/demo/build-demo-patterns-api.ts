@@ -27,16 +27,7 @@ function mean(nums: number[]): number {
   return nums.reduce((a, b) => a + b, 0) / nums.length;
 }
 
-function demoPatterns(
-  threshold: number,
-  window: PatternWindow,
-  ctx: PatternFeatureContext,
-): PatternInsightJson[] {
-  const runDelta = ctx.sessions.avgMgdlDeltaRunLikeOverLongRunMi;
-  const runDeltaMag = runDelta != null ? Math.abs(Math.round(runDelta)) : null;
-  const runDirection = runDelta != null && runDelta > 0 ? "rise" : "drop";
-  const stepsDelta = ctx.steps.meanMgdlDeltaLessActiveMinusActive;
-  const stepsMag = stepsDelta != null ? Math.abs(Math.round(stepsDelta)) : null;
+function demoPatterns(threshold: number, window: PatternWindow): PatternInsightJson[] {
   const windowTag =
     window === "7d" ? "quick-view" : window === "30d" ? "balanced-view" : "long-view";
   const temporalConfidence =
@@ -51,47 +42,37 @@ function demoPatterns(
       id: `demo-temporal-lunch-${windowTag}`,
       title:
         window === "7d"
-          ? "This week: midday glucose shifts near lunch timing"
+          ? "This week, logged lunch sits near midday glucose variability"
           : window === "90d"
-            ? "Across 90 days, midday glucose still shifts near lunch timing"
-            : "Midday glucose shifts around logged lunch timing",
+            ? "Over 90 days, lunch logs still track midday glucose swings"
+            : "Midday glucose irregularity lines up with your lunch log time",
       description:
-        "Logged lunch timing and midday glucose movement are close in clock time, but direction and size vary by day. Use this as timing context, not a fixed post-meal rise rule.",
+        "There is a correlation between when you log lunch and glucose fluctuations around midday: your meal log's local hour overlaps the part of the day when glucose tends to be most changeable on the clock. The trace can rise, flatten, or dip from day to day, and swings vary in size—use that overlap as timing context, not as proof that every lunch drives the same post-meal curve.",
       type: "Temporal",
       confidencePercent: temporalConfidence,
       linkedSources: ["Dexcom"],
     },
     {
       id: `demo-steps-threshold-${windowTag}`,
-      title:
-        stepsMag != null
-          ? `Higher step days skew ~${stepsMag} mg/dL ${stepsDelta! > 0 ? "lower" : "higher"}`
-          : "Higher step days skew toward lower average glucose",
+      title: "Higher step days skew toward lower average glucose",
       description:
-        window === "7d"
-          ? "In this shorter window, the day-level step split is noisier but still directionally useful."
-          : "Daily step totals are compared against each day’s mean glucose: busier movement days run lower on average than sedentary ones in this window.",
+        "Daily step totals are compared against each day’s mean glucose: busier movement days run lower on average than sedentary ones in this window.",
       type: "Steps",
       confidencePercent: stepsConfidence,
       linkedSources: ["Dexcom", "Apple Steps"],
     },
     {
       id: `demo-sessions-activity-${windowTag}`,
-      title:
-        runDeltaMag != null
-          ? `Distance runs often ${runDirection} by ~${runDeltaMag} mg/dL`
-          : "Distance runs show a steady glucose dip; long swims often bump it",
+      title: "Distance runs often lower glucose by ~35 mg/dL",
       description:
-        window === "90d"
-          ? "Over a longer range, run-linked deltas smooth out and are easier to compare against occasional swim-related bumps."
-          : "Strava runs pair with a repeatable drop during the block; pool swims over ~30 minutes align with a modest rise — illustrative only.",
+        "In this demo view, Strava runs long enough to count as distance work tend to show glucose falling through the effort—often on the order of ~35 mg/dL versus the surrounding trace. Long pool swims (about 30+ minutes) lean the other way, with a modest rise. Illustrative sample pattern only; your own response to exercise will vary.",
       type: "Sessions",
       confidencePercent: sessionsConfidence,
       linkedSources: ["Dexcom", "Strava"],
     },
     {
       id: `demo-temporal-weekend-${windowTag}`,
-      title: "Weekend averages run higher than weekdays here",
+      title: "Weekend averages run higher than weekdays",
       description:
         window === "7d"
           ? "In a one-week lens this can flip faster day to day; expand to 30/90 days for stability."
@@ -187,9 +168,9 @@ export function buildDemoPatternsFeatureJson(args: {
     rangeEndYmd,
   );
 
-  let patterns = selectPatternsForDisplay(demoPatterns(threshold, window, featureContext));
+  let patterns = selectPatternsForDisplay(demoPatterns(threshold, window));
   if (patterns.length === 0) {
-    patterns = selectPatternsForDisplay(demoPatterns(15, window, featureContext));
+    patterns = selectPatternsForDisplay(demoPatterns(15, window));
   }
 
   patterns = attachLearnMoreToPatterns(patterns, featureContext);

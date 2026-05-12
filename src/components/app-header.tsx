@@ -3,7 +3,14 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { SignInButton, useAuth, useUser, UserButton } from "@clerk/nextjs";
+import {
+  PATTERNS_WINDOW_CHANGED_EVENT,
+  PATTERNS_WINDOW_STORAGE_KEY,
+  parseStoredPatternWindow,
+} from "@/lib/patterns/stored-window";
+import type { PatternWindow } from "@/lib/patterns/types";
 
 function UserMenuIcon() {
   return (
@@ -25,6 +32,102 @@ function UserMenuIcon() {
         />
       </svg>
     </span>
+  );
+}
+
+function buildInsightsHref(isDemoRoute: boolean) {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  let w: PatternWindow = "30d";
+  try {
+    const s = parseStoredPatternWindow(sessionStorage.getItem(PATTERNS_WINDOW_STORAGE_KEY));
+    if (s) w = s;
+  } catch {
+    // sessionStorage may be unavailable (private mode)
+  }
+  return isDemoRoute
+    ? `/demo/patterns?window=${w}&timeZone=${encodeURIComponent(tz)}`
+    : `/patterns?window=${w}&timeZone=${encodeURIComponent(tz)}`;
+}
+
+function DesktopNavMenu() {
+  const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+  const [insightsBump, setInsightsBump] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const isDemoRoute = pathname.startsWith("/demo");
+
+  useEffect(() => {
+    function onWindowChanged() {
+      setInsightsBump((n) => n + 1);
+    }
+    window.addEventListener(PATTERNS_WINDOW_CHANGED_EVENT, onWindowChanged);
+    return () => window.removeEventListener(PATTERNS_WINDOW_CHANGED_EVENT, onWindowChanged);
+  }, []);
+
+  useEffect(() => {
+    function onPointerDown(e: PointerEvent) {
+      if (!rootRef.current) return;
+      if (e.target instanceof Node && !rootRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
+  void insightsBump;
+  const insightsHref =
+    typeof window === "undefined"
+      ? isDemoRoute
+        ? "/demo/patterns?window=30d"
+        : "/patterns?window=30d"
+      : buildInsightsHref(isDemoRoute);
+
+  const items = [
+    { href: isDemoRoute ? "/demo" : "/", label: "Daily" },
+    { href: insightsHref, label: "Insights" },
+    { href: isDemoRoute ? "/demo/settings" : "/settings", label: "Settings" },
+  ];
+
+  return (
+    <div ref={rootRef} className="relative hidden md:block">
+      <button
+        type="button"
+        aria-label="Open navigation menu"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-align-border bg-white text-align-muted shadow-sm shadow-black/[0.04] transition hover:bg-align-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-align-forest/30"
+      >
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}>
+          <path strokeLinecap="round" d="M4 7h16M4 12h16M4 17h16" />
+        </svg>
+      </button>
+      {open ? (
+        <div
+          role="menu"
+          className="absolute right-0 top-[calc(100%+0.5rem)] z-50 min-w-[10.5rem] rounded-xl border border-align-border/80 bg-white/95 p-1.5 shadow-lg shadow-black/[0.08] backdrop-blur"
+        >
+          {items.map((item) => (
+            <Link
+              key={item.label}
+              href={item.href}
+              onClick={() => setOpen(false)}
+              className="flex min-h-10 items-center rounded-lg px-3 text-sm font-medium text-zinc-700 transition hover:bg-align-subtle/85 hover:text-zinc-900"
+            >
+              {item.label}
+            </Link>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -72,7 +175,12 @@ export function AppHeader({ devModeBanner = false }: AppHeaderProps) {
           />
         </Link>
 
-        <div className="flex shrink-0 items-center">
+        <div className="flex shrink-0 items-center gap-2">
+          {!pathname.startsWith("/sign-in") &&
+          !pathname.startsWith("/sign-up") &&
+          !pathname.startsWith("/auth/") ? (
+            <DesktopNavMenu />
+          ) : null}
           {!isLoaded ? (
             <span
               className="inline-block h-9 w-9 shrink-0 animate-pulse rounded-full bg-zinc-100"

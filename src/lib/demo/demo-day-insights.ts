@@ -1,18 +1,38 @@
-/** Sample day-insights cards when demo mode is active (no Claude call). */
-export const DEMO_DAY_INSIGHTS = [
-  {
-    title: "Meals and glucose",
-    detail:
-      "Demo data places lunch on the chart before the midday rise so the absorption band lines up with a carb-driven spike, then a return toward baseline.",
-  },
-  {
-    title: "Activity and glucose",
-    detail:
-      "The sample run overlaps a dip from typical sensitivity to exercise — compare the workout band to the CGM trough that afternoon.",
-  },
-  {
-    title: "Overnight",
-    detail:
-      "Sleep shading crosses midnight; glucose trends toward a steady overnight range before dawn.",
-  },
-] as const;
+import type { DayInsightSnapshot } from "@/lib/day-insight-context";
+import { formatLocalHour12 } from "@/lib/format-local-hour";
+
+/** Demo-mode day insights with deterministic, data-backed copy (no Claude call). */
+export function buildDemoDayInsights(snapshot: DayInsightSnapshot) {
+  const { aggregates, targets, hourlyStepsByLocalHour } = snapshot;
+  const glucoseTargetMet = aggregates.tirInRangePercent >= targets.tirGoalPercent;
+  const topStepHour = hourlyStepsByLocalHour.reduce(
+    (best, value, hour) => (value > best.value ? { hour, value } : best),
+    { hour: 0, value: 0 },
+  );
+  const sleepHours = Math.round((aggregates.sleepMinutes / 60) * 10) / 10;
+
+  return [
+    {
+      title: "Glucose range",
+      detail:
+        aggregates.avgGlucoseMgdl == null
+          ? "CGM data is sparse for this sample day, so range interpretation is limited."
+          : `${aggregates.tirInRangePercent.toFixed(1)}% time-in-range (${targets.lowMgdl}-${targets.highMgdl} mg/dL), average ${aggregates.avgGlucoseMgdl} mg/dL. ${
+              glucoseTargetMet ? "This meets the daily TIR target." : "This is below the daily TIR target."
+            }`,
+    },
+    {
+      title: "Movement pattern",
+      detail:
+        topStepHour.value > 0
+          ? `Peak step hour is around ${formatLocalHour12(topStepHour.hour)} with ${topStepHour.value.toLocaleString()} steps; total is ${aggregates.totalSteps.toLocaleString()} for the day.`
+          : `No meaningful steps were logged this day; total is ${aggregates.totalSteps.toLocaleString()}.`,
+    },
+    {
+      title: "Recovery context",
+      detail: `Sleep overlap is about ${sleepHours}h. Food entries: ${aggregates.foodEntriesCount} (${Math.round(
+        aggregates.foodCarbsGrams,
+      )}g carbs). Workouts: ${aggregates.stravaActivitiesCount + aggregates.manualWorkoutsCount}.`,
+    },
+  ] as const;
+}

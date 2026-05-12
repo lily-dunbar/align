@@ -6,7 +6,8 @@ import { formatInTimeZone } from "date-fns-tz";
 
 import { getDemoDayProfile, type DemoDayProfile } from "@/lib/demo/demo-day-profile";
 
-export const DEMO_BG_CURVE_SEED = "align-demo-bg-t1-v1";
+/** Bump when reshaping CGM synthetic series (patterns/day summaries stay aligned to this seed). */
+export const DEMO_BG_CURVE_SEED = "align-demo-bg-t1-v5";
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n));
@@ -57,26 +58,37 @@ export function gaussBump(h: number, center: number, sigma: number, height: numb
 export function weekdayBaseLunchMgdl(h: number): number {
   let b: number;
   if (h < 5) {
-    b = lerp(98, 104, smoothstep01(h / 5));
+    b = lerp(101, 110, smoothstep01(h / 5));
   } else if (h < 8.5) {
-    b = lerp(104, 128, smoothstep01((h - 5) / 3.5));
+    b = lerp(110, 129, smoothstep01((h - 5) / 3.5));
   } else if (h < 23) {
-    b = 128 + Math.sin((h - 8.5) * 0.2) * 7;
+    b = 129 + Math.sin((h - 8.5) * 0.2) * 8;
   } else {
-    b = lerp(122, 100, smoothstep01((h - 23) / 1));
+    b = lerp(122, 103, smoothstep01((h - 23) / 1));
   }
-  // Peaks are intentionally after meal logs so list/graph read as "food -> rise".
+  // Meal-linked bumps sized so aggregate TIR typically lands around ~80–85% for demo targets.
   return (
     b +
-    gaussBump(h, 8.25, 0.42, 28) +
-    gaussBump(h, 12.95, 0.48, 56) +
-    gaussBump(h, 19.05, 0.5, 36)
+    gaussBump(h, 8.25, 0.42, 24) +
+    gaussBump(h, 12.95, 0.48, 46) +
+    gaussBump(h, 19.05, 0.5, 33)
   );
 }
 
 export function weekdayGlucoseFromProfile(h: number, profile: DemoDayProfile): number {
+  const sensitivityAdj = (1 - profile.insulinSensitivity) * 44;
+  const breakfastScale = profile.carbLoadFactor / profile.insulinSensitivity;
+  const lunchScale = (profile.carbLoadFactor * 1.06) / profile.insulinSensitivity;
+  const dinnerScale = (profile.carbLoadFactor * 1.02) / profile.insulinSensitivity;
   let v =
-    weekdayBaseLunchMgdl(h) + profile.stepsGlucoseShift + profile.weekendGlucoseLift;
+    weekdayBaseLunchMgdl(h) +
+    sensitivityAdj +
+    profile.stressLoadMgdl +
+    profile.stepsGlucoseShift +
+    profile.weekendGlucoseLift;
+  v += gaussBump(h, 8.15, 0.45, 20 * (breakfastScale - 1));
+  v += gaussBump(h, 12.95, 0.52, 38 * (lunchScale - 1));
+  v += gaussBump(h, 19.1, 0.58, 28 * (dinnerScale - 1));
   if (profile.hasDistanceRun) {
     v -= gaussBump(h, 17.75, 0.32, profile.runDipDepth);
   }
@@ -103,7 +115,7 @@ export function getDemoGlucoseDayState(
   isWeekend: boolean,
 ): DemoGlucoseDayState {
   const dayRng = mulberry32(hashString(`${seed}|dayvar|${ymd}`));
-  const dailyOffset = (dayRng() - 0.5) * 40;
+  const dailyOffset = (dayRng() - 0.5) * 36;
 
   if (!isWeekend) {
     return {
@@ -125,10 +137,10 @@ export function getDemoGlucoseDayState(
     spike2Center = 10 + weekendSpikeRng() * 10;
     guard += 1;
   }
-  const spike1Height = 62 + weekendSpikeRng() * 18;
-  const spike2Height = 58 + weekendSpikeRng() * 20;
+  const spike1Height = 54 + weekendSpikeRng() * 18;
+  const spike2Height = 50 + weekendSpikeRng() * 20;
   const spike3Center = 18.9 + weekendSpikeRng() * 1.2;
-  const spike3Height = 34 + weekendSpikeRng() * 12;
+  const spike3Height = 30 + weekendSpikeRng() * 12;
 
   return {
     dailyOffset,
@@ -165,15 +177,14 @@ export function demoGlucoseMgdlForSample(params: {
   if (!isWeekend) {
     mgdl = weekdayGlucoseFromProfile(hourF, profile);
     mgdl += state.dailyOffset;
-    mgdl += demoSlotNoise(seed, ymd, slotIndex, 2.5);
+    mgdl += demoSlotNoise(seed, ymd, slotIndex, 4.5);
   } else {
-    mgdl = weekendArchetypeMgdl(hourF, state);
-    mgdl += profile.stepsGlucoseShift + profile.weekendGlucoseLift;
-    if (profile.hasLongSwim) {
-      mgdl += gaussBump(hourF, profile.swimPeakHour, 0.36, profile.swimBumpMgdl);
-    }
-    mgdl += state.dailyOffset * 1.05;
-    mgdl += demoSlotNoise(seed, ymd, slotIndex, 22);
+    // Weekends keep the same physiology but with higher carb variability and less routine.
+    mgdl = weekdayGlucoseFromProfile(hourF, profile);
+    mgdl += gaussBump(hourF, state.spike1Center || 10.7, 0.45, 18 + state.spike1Height * 0.23);
+    mgdl += gaussBump(hourF, state.spike2Center || 13.1, 0.5, 20 + state.spike2Height * 0.2);
+    mgdl += state.dailyOffset * 0.9;
+    mgdl += demoSlotNoise(seed, ymd, slotIndex, 6.5);
   }
 
   return clamp(Math.round(mgdl), 65, 340);

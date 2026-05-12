@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { uiPanelSurface } from "@/lib/ui-surfaces";
 
@@ -8,6 +8,7 @@ type Props = {
   id: string;
   open: boolean;
   onClose: () => void;
+  anchorRef: RefObject<HTMLElement | null>;
   /** YYYY-MM-DD */
   selectedYmd: string;
   /** YYYY-MM-DD — no day after this is selectable */
@@ -59,8 +60,17 @@ function buildMonthCells(year: number, monthIndex: number): (number | null)[] {
 
 const WEEKDAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"] as const;
 
-export function DayDatePickerPopover({ id, open, onClose, selectedYmd, maxYmd, onSelectYmd }: Props) {
+export function DayDatePickerPopover({
+  id,
+  open,
+  onClose,
+  anchorRef,
+  selectedYmd,
+  maxYmd,
+  onSelectYmd,
+}: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
   const maxParsed = useMemo(() => parseYmd(maxYmd), [maxYmd]);
   const [viewYear, setViewYear] = useState(() => parseYmd(selectedYmd).y);
   const [viewMonthIndex, setViewMonthIndex] = useState(() => parseYmd(selectedYmd).m - 1);
@@ -82,6 +92,30 @@ export function DayDatePickerPopover({ id, open, onClose, selectedYmd, maxYmd, o
     document.addEventListener("pointerdown", onPointerDown, true);
     return () => document.removeEventListener("pointerdown", onPointerDown, true);
   }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    function updatePosition() {
+      const anchor = anchorRef.current;
+      const pop = rootRef.current;
+      if (!anchor || !pop) return;
+      const ar = anchor.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const popW = pop.offsetWidth || 320;
+      const margin = 12;
+      const centeredLeft = ar.left + ar.width / 2 - popW / 2;
+      const clampedLeft = Math.max(margin, Math.min(vw - popW - margin, centeredLeft));
+      const top = ar.bottom + 8;
+      setPosition({ top, left: clampedLeft });
+    }
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [anchorRef, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -139,7 +173,8 @@ export function DayDatePickerPopover({ id, open, onClose, selectedYmd, maxYmd, o
       role="dialog"
       aria-modal="true"
       aria-label="Choose calendar day"
-      className={`absolute left-1/2 top-[calc(100%+0.5rem)] z-50 w-[min(100vw-2rem,20rem)] -translate-x-1/2 p-4 ${uiPanelSurface} shadow-lg shadow-black/[0.08] ring-1 ring-align-forest/12`}
+      style={{ top: position.top, left: position.left }}
+      className={`fixed z-50 w-[min(100vw-1.5rem,20rem)] p-4 ${uiPanelSurface} shadow-lg shadow-black/[0.08] ring-1 ring-align-forest/12`}
     >
       <div className="flex items-center justify-between gap-2 border-b border-align-border-soft pb-3">
         <button

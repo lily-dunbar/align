@@ -268,6 +268,24 @@ export function OnboardingWizard({ initialPrefs }: { initialPrefs: UserPreferenc
         </p>
         {step === "dexcom" ? (
           <div className="mt-6">
+            <div className="mb-4 rounded-xl border border-align-border/80 bg-align-subtle/35 px-4 py-3">
+              <p className="text-sm font-semibold text-zinc-900">If Dexcom OAuth does not complete</p>
+              <ol className="mt-2 list-inside list-decimal space-y-1.5 text-sm text-zinc-700">
+                <li>
+                  In the Dexcom app, verify <span className="font-medium">Share</span> is enabled (Share icon in app
+                  navigation).
+                </li>
+                <li>
+                  If asked, allow data sharing with third-party apps during Dexcom sign-in.
+                </li>
+                <li>
+                  After connecting, return here and continue to the next onboarding step.
+                </li>
+              </ol>
+              <p className="mt-2 text-xs text-zinc-600">
+                If the connect button returns with an error, open Settings → Integrations later and reconnect there.
+              </p>
+            </div>
             <div className="flex flex-wrap items-center justify-end gap-3">
               <button type="button" className={btnSecondary} onClick={() => goTo("dexcom")} disabled>
                 Previous

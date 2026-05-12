@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { formatLocalHour12 } from "@/lib/format-local-hour";
 import type {
   PatternFeatureContext,
   PatternInsightJson,
@@ -30,13 +31,6 @@ function stepSources(st: StepsStats): string[] {
   const out = ["Dexcom"];
   if (st.hasHourlyStepsData) out.push("Apple Steps");
   return out;
-}
-
-function hourLabel12(h: number): string {
-  if (h === 0) return "12am";
-  if (h < 12) return `${h}am`;
-  if (h === 12) return "12pm";
-  return `${h - 12}pm`;
 }
 
 function capitalizePhrase(word: string): string {
@@ -190,8 +184,8 @@ export function buildHeuristicPatterns(ctx: PatternFeatureContext): PatternInsig
   ) {
     temporal.push({
       id: id("temporal-peak-trough"),
-      title: `Higher around ${hourLabel12(t.peakHour)} than around ${hourLabel12(t.troughHour)}`,
-      description: `Across this window, the stretch around ${hourLabel12(t.peakHour)} tends to sit above the stretch around ${hourLabel12(
+      title: `Higher around ${formatLocalHour12(t.peakHour)} than around ${formatLocalHour12(t.troughHour)}`,
+      description: `Across this window, the stretch around ${formatLocalHour12(t.peakHour)} tends to sit above the stretch around ${formatLocalHour12(
         t.troughHour,
       )} — meals, sleep, or stress timing may be part of the story.`,
       type: "Temporal",

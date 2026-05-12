@@ -9,10 +9,13 @@ import {
   calendarYmdIsWeekend,
   getDemoDayProfile,
 } from "@/lib/demo/demo-day-profile";
+import type { GlucosePoint as TirGlucosePoint } from "@/lib/tir";
+import { calculateTir } from "@/lib/tir";
 import type { UserPreferences } from "@/lib/user-display-preferences";
 import type {
   PatternDailyGlucoseStepsPoint,
   PatternSessionDeltaPoint,
+  PatternWindow,
   SessionStats,
   StepsStats,
   TemporalStats,
@@ -60,7 +63,7 @@ function percentileFromSorted(sorted: number[], p: number): number | null {
 }
 
 function runDeltaMgdlForDay(ymd: string, seed: string): number {
-  // Tight band around ~35 mg/dL drop to match demo Patterns headline.
+  // Tight band consistent with DEMO_RUN_DIP_DEPTH (demo aerobic dip narrative).
   const j = hashInt(`${seed}|run-delta|${ymd}`) % 9;
   return -(DEMO_RUN_DIP_DEPTH - 3 + j);
 }
@@ -110,9 +113,88 @@ export function demoDailyMeanMgdl(ymd: string, seed: string): number {
   return sum / 288;
 }
 
+/** All CGM samples in the window — used for aggregate TIR / mean consistent with real stats. */
+export function collectDemoWindowGlucosePoints(ymds: string[], seed: string): TirGlucosePoint[] {
+  const points: TirGlucosePoint[] = [];
+  let seq = 0;
+  for (const ymd of ymds) {
+    const isWeekend = calendarYmdIsWeekend(ymd);
+    const state = getDemoGlucoseDayState(ymd, seed, isWeekend);
+    for (let slot = 0; slot < 288; slot += 1) {
+      const hourF = (slot * 5) / 60;
+      const mgdl = demoGlucoseMgdlForSample({
+        hourF,
+        slotIndex: slot,
+        ymd,
+        seed,
+        isWeekend,
+        state,
+      });
+      seq += 1;
+      points.push({
+        observedAt: new Date(seq * 60_000),
+        mgdl,
+      });
+    }
+  }
+  return points;
+}
+
+export function computeDemoWindowTirAndMean(
+  ymds: string[],
+  seed: string,
+  targetLowMgdl: number,
+  targetHighMgdl: number,
+): { tirInRangePercent: number | null; meanMgdl: number | null } {
+  const points = collectDemoWindowGlucosePoints(ymds, seed);
+  if (!points.length) return { tirInRangePercent: null, meanMgdl: null };
+  const tir = calculateTir(points, { targetLowMgdl, targetHighMgdl });
+  const meanMgdl = Math.round(mean(points.map((p) => p.mgdl)));
+  return { tirInRangePercent: tir.inRangePercent, meanMgdl };
+}
+
+/** Slight threshold skew so active vs sedentary day splits differ subtly across 7d / 30d / 90d. */
+export function demoActiveStepsThresholdForWindow(
+  prefs: UserPreferences,
+  patternWindow: PatternWindow,
+): number {
+  const base = Math.max(5000, Math.min(prefs.targetStepsPerDay, 9000));
+  const skew =
+    patternWindow === "7d" ? -165 : patternWindow === "30d" ? 0 : 145;
+  return Math.round(Math.min(11_500, Math.max(4300, base + skew)));
+}
+
+/** Circular moving average on the 24h composite curve — stronger smoothing for longer windows. */
+function smoothDemoCompositeHourCurve(means: number[], patternWindow: PatternWindow): number[] {
+  const taps =
+    patternWindow === "7d" ? 1 : patternWindow === "30d" ? 3 : 5;
+  if (taps <= 1) {
+    return means.map((v) => Math.round(v));
+  }
+  const radius = Math.floor(taps / 2);
+  const out: number[] = [];
+  for (let h = 0; h < 24; h += 1) {
+    let sum = 0;
+    let n = 0;
+    for (let k = -radius; k <= radius; k += 1) {
+      const idx = (h + k + 24) % 24;
+      sum += means[idx]!;
+      n += 1;
+    }
+    out.push(Math.round(sum / n));
+  }
+  return out;
+}
+
+export type DemoTemporalOptions = {
+  patternWindow: PatternWindow;
+  eveningHighMgdlThreshold: number;
+};
+
 export function computeDemoTemporalFromDays(
   ymds: string[],
   seed: string,
+  opts?: DemoTemporalOptions,
 ): TemporalStats {
   if (ymds.length === 0) {
     return {
@@ -142,18 +224,49 @@ export function computeDemoTemporalFromDays(
   const weekdayMeans: number[] = [];
   const weekendMeans: number[] = [];
 
+  let eveningHighDays = 0;
+  const highTh = opts?.eveningHighMgdlThreshold;
+
   for (const ymd of ymds) {
     const dayHour = demoHourMeansForDay(ymd, seed);
     const dm = demoDailyMeanMgdl(ymd, seed);
     if (calendarYmdIsWeekend(ymd)) weekendMeans.push(dm);
     else weekdayMeans.push(dm);
+
+    if (highTh != null) {
+      const isWeekend = calendarYmdIsWeekend(ymd);
+      const state = getDemoGlucoseDayState(ymd, seed, isWeekend);
+      let dayHasEveningHigh = false;
+      for (let hour = 18; hour <= 21 && !dayHasEveningHigh; hour += 1) {
+        for (let k = 0; k < 12; k += 1) {
+          const hourF = hour + (k * 5) / 60;
+          const mgdl = demoGlucoseMgdlForSample({
+            hourF,
+            slotIndex: hour * 12 + k,
+            ymd,
+            seed,
+            isWeekend,
+            state,
+          });
+          if (mgdl > highTh) {
+            dayHasEveningHigh = true;
+            break;
+          }
+        }
+      }
+      if (dayHasEveningHigh) eveningHighDays += 1;
+    }
+
     for (let h = 0; h < 24; h += 1) {
       accHour[h] += dayHour[h]!;
       cntHour[h] += 1;
     }
   }
 
-  const hourMeanMgdl = accHour.map((s, h) => Math.round(s / Math.max(1, cntHour[h]!)));
+  const rawHourMean = accHour.map((s, h) => Math.round(s / Math.max(1, cntHour[h]!)));
+  const hourMeanMgdl = opts?.patternWindow
+    ? smoothDemoCompositeHourCurve(rawHourMean, opts.patternWindow)
+    : rawHourMean;
   const readingsUsed = ymds.length * 288;
 
   let peakHour = 0;
@@ -184,7 +297,7 @@ export function computeDemoTemporalFromDays(
     weekendMeanMgdl: weekendMeans.length ? mean(weekendMeans) : null,
     weekdaySampleCount: weekdayMeans.length * 288,
     weekendSampleCount: weekendMeans.length * 288,
-    eveningHigh630to21DaysCount: Math.min(ymds.length, 10),
+    eveningHigh630to21DaysCount: highTh != null ? eveningHighDays : Math.min(ymds.length, 10),
     dinnerEveningMeanMgdl: eveningMeanMgdl,
     dinnerEveningVsMorningDeltaMgdl: eveningMeanMgdl - morningMeanMgdl,
   };
@@ -239,7 +352,11 @@ export function computeDemoStepsStats(
   };
 }
 
-export function computeDemoSessionStats(ymds: string[], seed: string): SessionStats {
+export function computeDemoSessionStats(
+  ymds: string[],
+  seed: string,
+  patternWindow?: PatternWindow,
+): SessionStats {
   const runDays = ymds.filter((y) => getDemoDayProfile(y, seed).hasDistanceRun);
   const swimDays = ymds.filter((y) => getDemoDayProfile(y, seed).hasLongSwim);
   const runDeltas = runDays.map((y) => runDeltaMgdlForDay(y, seed));
@@ -250,11 +367,20 @@ export function computeDemoSessionStats(ymds: string[], seed: string): SessionSt
   const avgRunDelta = runDeltas.length ? mean(runDeltas) : null;
   const sortedRun = [...runDeltas].sort((a, b) => a - b);
 
+  const workoutReadingsPerDay =
+    patternWindow === "7d"
+      ? 36
+      : patternWindow === "30d"
+        ? 40
+        : patternWindow === "90d"
+          ? 44
+          : 40;
+
   return {
     workoutStartsCount: runDays.length + swimDays.length,
     stravaWorkoutCount: runDays.length,
     manualWorkoutCount: swimDays.length,
-    readingsNearWorkout2h: Math.min(ymds.length * 40, 2400),
+    readingsNearWorkout2h: Math.min(ymds.length * workoutReadingsPerDay, 2400),
     readingsAwayFromWorkout2h: Math.max(200, ymds.length * 200),
     meanMgdlNearWorkout2h:
       allSessionDeltas.length > 0 ? 136 + mean(allSessionDeltas) : null,
@@ -272,7 +398,11 @@ export function computeDemoSessionStats(ymds: string[], seed: string): SessionSt
   };
 }
 
-export function buildDemoSessionDeltaPoints(ymds: string[], seed: string): PatternSessionDeltaPoint[] {
+export function buildDemoSessionDeltaPoints(
+  ymds: string[],
+  seed: string,
+  patternWindow?: PatternWindow,
+): PatternSessionDeltaPoint[] {
   const out: PatternSessionDeltaPoint[] = [];
   for (const ymd of ymds) {
     const p = getDemoDayProfile(ymd, seed);
@@ -293,7 +423,15 @@ export function buildDemoSessionDeltaPoints(ymds: string[], seed: string): Patte
       });
     }
   }
-  return out.slice(0, 24);
+  const cap =
+    patternWindow === "7d"
+      ? 10
+      : patternWindow === "30d"
+        ? 18
+        : patternWindow === "90d"
+          ? 24
+          : 24;
+  return out.slice(0, cap);
 }
 
 export function buildDemoHourlyCurvesForDays(ymds: string[], seed: string) {

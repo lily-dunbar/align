@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { DayDatePickerPopover } from "@/components/day-date-picker-popover";
@@ -92,6 +92,7 @@ export function DateNav({ initialDateYmd }: Props) {
   const params = useSearchParams();
   const effectiveTz = useEffectiveTimeZone();
   const pickerPanelId = useId();
+  const pickerAnchorRef = useRef<HTMLDivElement>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const selectedDate = useResolvedDayYmd(initialDateYmd);
   const todayYmd = getLocalCalendarYmd(new Date(), effectiveTz);
@@ -135,8 +136,8 @@ export function DateNav({ initialDateYmd }: Props) {
 
   return (
     <section className="w-full" aria-label="Day navigation">
-      <div className="flex flex-col gap-3">
-        <div className="flex w-full items-center gap-2 sm:gap-3">
+      <div className="flex w-full flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
+        <div className="flex w-full min-w-0 items-center gap-2 sm:gap-3 md:w-auto">
           <button
             type="button"
             aria-label="Previous day"
@@ -146,11 +147,14 @@ export function DateNav({ initialDateYmd }: Props) {
             <ChevronLeftIcon className="h-5 w-5" />
           </button>
 
-          <div className="relative flex min-h-10 min-w-0 flex-1 justify-center touch-manipulation">
+          <div
+            ref={pickerAnchorRef}
+            className="relative flex min-h-10 min-w-0 flex-1 justify-center touch-manipulation md:flex-none md:justify-start"
+          >
             <button
               type="button"
               onClick={() => openPicker()}
-              className="inline-flex min-h-10 min-w-0 max-w-full cursor-pointer select-none items-center justify-center gap-2 rounded-full px-3 py-2 text-center transition hover:bg-align-subtle/90 active:bg-align-subtle"
+              className="inline-flex min-h-10 min-w-0 max-w-full cursor-pointer select-none items-center justify-center gap-2 rounded-full px-3 py-2 text-center transition hover:bg-align-subtle/90 active:bg-align-subtle md:justify-start"
               aria-expanded={pickerOpen}
               aria-haspopup="dialog"
               aria-controls={pickerPanelId}
@@ -165,6 +169,7 @@ export function DateNav({ initialDateYmd }: Props) {
               id={pickerPanelId}
               open={pickerOpen}
               onClose={() => setPickerOpen(false)}
+              anchorRef={pickerAnchorRef}
               selectedYmd={selectedDate}
               maxYmd={todayYmd}
               onSelectYmd={setDate}
@@ -184,11 +189,11 @@ export function DateNav({ initialDateYmd }: Props) {
           </button>
         </div>
 
-        <div className="flex justify-stretch sm:justify-end">
+        <div className="flex w-full shrink-0 md:w-auto md:justify-end">
           <button
             type="button"
             onClick={openAddActivityModal}
-            className="inline-flex min-h-11 w-full min-w-0 items-center justify-center gap-1.5 rounded-full bg-align-forest px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-black/10 outline-none transition hover:bg-align-forest-muted active:brightness-95 focus-visible:ring-2 focus-visible:ring-align-forest/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:w-auto sm:min-w-[10.5rem]"
+            className="inline-flex min-h-11 w-full min-w-0 items-center justify-center gap-1.5 rounded-full bg-align-forest px-4 py-2.5 text-sm font-semibold text-white shadow-sm shadow-black/10 outline-none transition hover:bg-align-forest-muted active:brightness-95 focus-visible:ring-2 focus-visible:ring-align-forest/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background md:w-auto md:min-w-[10.5rem]"
           >
             <span aria-hidden>+</span>
             <span>Add Activity</span>

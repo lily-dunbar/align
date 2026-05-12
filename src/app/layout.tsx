@@ -51,7 +51,7 @@ export default async function RootLayout({
         <ClerkProvider>
           <AppLaunchSplashGate>
             <AppHeader devModeBanner={devModeBanner} />
-            <div className="flex min-h-0 flex-1 flex-col pb-[calc(3.25rem+env(safe-area-inset-bottom,0px))]">
+            <div className="flex min-h-0 flex-1 flex-col pb-[calc(3.25rem+env(safe-area-inset-bottom,0px))] md:pb-0">
               {children}
             </div>
             <AppBottomNav />

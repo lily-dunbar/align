@@ -175,7 +175,7 @@ export function buildDemoDayApiPayload(args: DemoDayArgs) {
     });
     glucosePoints.push({
       observedAt,
-      mgdl: clamp(mgdl, 68, 320),
+      mgdl: clamp(mgdl, 68, 340),
     });
     idx += 1;
   }
@@ -310,6 +310,7 @@ export function buildDemoDayApiPayload(args: DemoDayArgs) {
 
   const foodEntries = !isWeekend
     ? (() => {
+        const carbScale = dayProfile.carbLoadFactor;
         const breakfastAt = addMinutes(startUtc, Math.round((8.25 * 60) - WEEKEND_LEAD_BEFORE_PEAK_MIN));
         const lunchAt = addMinutes(startUtc, 11 * 60);
         const dinnerAt = addMinutes(startUtc, Math.round((19.05 * 60) - WEEKEND_LEAD_BEFORE_PEAK_MIN));
@@ -319,7 +320,7 @@ export function buildDemoDayApiPayload(args: DemoDayArgs) {
             userId,
             eatenAt: breakfastAt,
             title: "Breakfast",
-            carbsGrams: 34,
+            carbsGrams: Math.round(32 * carbScale),
             proteinGrams: 22,
             fatGrams: 14,
             calories: 380,
@@ -332,7 +333,7 @@ export function buildDemoDayApiPayload(args: DemoDayArgs) {
             userId,
             eatenAt: lunchAt,
             title: "Lunch",
-            carbsGrams: 72,
+            carbsGrams: Math.round(64 * carbScale),
             proteinGrams: 32,
             fatGrams: 16,
             calories: 580,
@@ -345,7 +346,7 @@ export function buildDemoDayApiPayload(args: DemoDayArgs) {
             userId,
             eatenAt: dinnerAt,
             title: "Dinner",
-            carbsGrams: 66,
+            carbsGrams: Math.round(58 * carbScale),
             proteinGrams: 34,
             fatGrams: 22,
             calories: 690,

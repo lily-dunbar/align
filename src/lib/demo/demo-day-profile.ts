@@ -45,6 +45,12 @@ export type DemoDayProfile = {
   stepsGlucoseShift: number;
   /** Extra lift on Sat/Sun */
   weekendGlucoseLift: number;
+  /** Day-level insulin sensitivity scalar (higher => smaller meal spikes). */
+  insulinSensitivity: number;
+  /** Relative carb load multiplier for the day (higher => larger meal excursions). */
+  carbLoadFactor: number;
+  /** Stress/sleep debt lift (higher => more resistant and higher baseline). */
+  stressLoadMgdl: number;
   /** Weekday distance run with Strava + CGM dip */
   hasDistanceRun: boolean;
   /** Gaussian depth for the run dip (mg/dL at center) */
@@ -57,40 +63,51 @@ export type DemoDayProfile = {
 };
 
 /** Fixed run-dip depth so patterns show a consistent “distance run” story */
-export const DEMO_RUN_DIP_DEPTH = 34;
+export const DEMO_RUN_DIP_DEPTH = 24;
 
 export function getDemoDayProfile(ymd: string, seed: string): DemoDayProfile {
   const rng = mulberry32(hashString(`${seed}|dayprof|${ymd}`));
   const weekend = calendarYmdIsWeekend(ymd);
 
-  // Mix sedentary and active days so Patterns "steps vs glucose" scatter shows both clusters.
+  // Mix sedentary and active days so the glucose-vs-steps scatter has realistic spread.
   const stepBin = hashString(`${seed}|stepbin|${ymd}`) % 100;
   let dailySteps: number;
-  if (stepBin < 36) {
-    dailySteps = Math.round(1800 + rng() * 3800); // ~1.8k–5.6k
-  } else if (stepBin < 52) {
-    dailySteps = Math.round(5600 + rng() * 2600); // ~5.6k–8.2k (straddle typical goals)
+  if (stepBin < 30) {
+    dailySteps = Math.round(2200 + rng() * 3200); // ~2.2k–5.4k
+  } else if (stepBin < 67) {
+    dailySteps = Math.round(5600 + rng() * 3300); // ~5.6k–8.9k
   } else {
-    dailySteps = Math.round(8800 + rng() * 5200); // ~8.8k–14k
+    dailySteps = Math.round(9000 + rng() * 5200); // ~9k–14.2k
   }
-  const stepsGlucoseShift = -clamp((dailySteps - 7000) / 250, -32, 12);
+  const stepsGlucoseShift = -clamp((dailySteps - 7000) / 260, -26, 12);
 
-  const weekendGlucoseLift = weekend ? 10 + rng() * 10 : 0;
+  const sensitivityRoll = hashString(`${seed}|sens|${ymd}`) % 100;
+  const insulinSensitivity =
+    sensitivityRoll < 15
+      ? 0.86 + rng() * 0.06
+      : sensitivityRoll < 82
+        ? 0.92 + rng() * 0.12
+        : 1.01 + rng() * 0.1;
+
+  const carbLoadFactor = 0.98 + rng() * (weekend ? 0.4 : 0.34);
+  const stressLoadMgdl = (weekend ? 2.5 : 1) + (hashString(`${seed}|stress|${ymd}`) % 10);
+  const weekendGlucoseLift = weekend ? 6 + rng() * 8 : 0;
 
   const runRng = hashString(`${seed}|run|${ymd}`) % 100;
-  // One workout on most days (~75%), including weekends.
-  const hasDistanceRun = runRng < (weekend ? 68 : 78);
+  const hasDistanceRun = runRng < (weekend ? 42 : 52);
 
   const swimRoll = hashString(`${seed}|swim|${ymd}`) % 100;
-  // Keep swim rare and only when we didn't already assign a run.
-  const hasLongSwim = !hasDistanceRun && swimRoll < (weekend ? 12 : 4);
+  const hasLongSwim = !hasDistanceRun && swimRoll < (weekend ? 14 : 6);
   const swimPeakHour = weekend ? 9.5 + rng() * 2.2 : 6.8 + rng() * 1.4;
-  const swimBumpMgdl = 36 + (hashString(`${seed}|swimb|${ymd}`) % 14);
+  const swimBumpMgdl = 18 + (hashString(`${seed}|swimb|${ymd}`) % 14);
 
   return {
     dailySteps,
     stepsGlucoseShift,
     weekendGlucoseLift,
+    insulinSensitivity,
+    carbLoadFactor,
+    stressLoadMgdl,
     hasDistanceRun,
     runDipDepth: DEMO_RUN_DIP_DEPTH,
     hasLongSwim,

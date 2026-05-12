@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { revalidateTag, unstable_cache } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
-import { DEMO_DAY_INSIGHTS } from "@/lib/demo/demo-day-insights";
+import { buildDemoDayInsights } from "@/lib/demo/demo-day-insights";
 import { isDemoDataActive } from "@/lib/demo/is-demo-data-active";
 import { PUBLIC_DEMO_USER_ID } from "@/lib/demo/public-demo";
 import { isDemoRequest } from "@/lib/demo/request-mode";
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         ok: true,
         source: "demo" as const,
-        insights: [spark, ...DEMO_DAY_INSIGHTS],
+        insights: [spark, ...buildDemoDayInsights(snapshot)],
         generatedAt: new Date().toISOString(),
         date,
         timeZone,

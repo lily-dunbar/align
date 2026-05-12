@@ -117,14 +117,15 @@ async function getPatternWindowSummariesImpl(
   window: PatternWindow,
   at: Date,
 ): Promise<PatternWindowSummaryResult> {
+  if (await isDemoDataActive(userId)) {
+    const prefs = await getUserPreferences(userId);
+    return buildDemoPatternWindowSummaries(window, at, prefs);
+  }
+
   const { startUtc: curStart, endUtcExclusive: curEnd, labelDays } = rollingRangeUtc(
     window,
     at,
   );
-
-  if (await isDemoDataActive(userId)) {
-    return buildDemoPatternWindowSummaries(window, labelDays);
-  }
 
   const prefs = await getUserPreferences(userId);
   const prevEndExclusive = curStart;

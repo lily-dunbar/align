@@ -127,7 +127,7 @@ export function AppBottomNav() {
   ];
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-5 pb-[calc(0.45rem+env(safe-area-inset-bottom,0px))]">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center px-5 pb-[calc(0.45rem+env(safe-area-inset-bottom,0px))] md:hidden">
       <nav
         className="pointer-events-auto w-full max-w-2xl rounded-[1.35rem] border border-align-border/80 bg-white/95 py-1.5 pl-2 pr-2 shadow-lg shadow-black/[0.06] backdrop-blur-md supports-[backdrop-filter]:bg-white/90"
         aria-label="Main navigation"

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { DEMO_BG_CURVE_SEED } from "@/lib/demo/demo-bg-curve";
+import { formatLocalHour12 } from "@/lib/format-local-hour";
 import {
   buildDemoDailyGlucoseSteps,
   buildDemoHourlyCurvesForDays,
@@ -8,8 +9,9 @@ import {
   computeDemoSessionStats,
   computeDemoStepsStats,
   computeDemoTemporalFromDays,
+  computeDemoWindowTirAndMean,
+  demoActiveStepsThresholdForWindow,
   eachYmdInclusive,
-  demoDailyMeanMgdl,
 } from "@/lib/demo/demo-patterns-compute";
 import { attachLearnMoreToPatterns } from "@/lib/patterns/enrich-pattern-learn-more";
 import { formatYmdInZone } from "@/lib/patterns/format-ymd";
@@ -22,63 +24,70 @@ import type {
 } from "@/lib/patterns/types";
 import type { UserPreferences } from "@/lib/user-display-preferences";
 
-function mean(nums: number[]): number {
-  if (nums.length === 0) return 0;
-  return nums.reduce((a, b) => a + b, 0) / nums.length;
-}
-
-function demoPatterns(threshold: number, window: PatternWindow): PatternInsightJson[] {
+function demoPatterns(
+  threshold: number,
+  window: PatternWindow,
+  featureContext: PatternFeatureContext,
+): PatternInsightJson[] {
   const windowTag =
     window === "7d" ? "quick-view" : window === "30d" ? "balanced-view" : "long-view";
-  const temporalConfidence =
-    window === "7d" ? 84 : window === "30d" ? 88 : 91;
-  const sessionsConfidence =
-    window === "7d" ? 82 : window === "30d" ? 86 : 89;
-  const stepsConfidence =
-    window === "7d" ? 80 : window === "30d" ? 85 : 88;
+  const temporal = featureContext.temporal;
+  const steps = featureContext.steps;
+  const sessions = featureContext.sessions;
+  const weekendDelta =
+    temporal.weekendMeanMgdl != null && temporal.weekdayMeanMgdl != null
+      ? temporal.weekendMeanMgdl - temporal.weekdayMeanMgdl
+      : null;
+  const stepsDelta = steps.meanMgdlDeltaLessActiveMinusActive;
+  const runDelta = sessions.avgMgdlDeltaRunLike;
+
+  const temporalConfidence = window === "7d" ? 79 : window === "30d" ? 86 : 90;
+  const sessionsConfidence = window === "7d" ? 77 : window === "30d" ? 84 : 88;
+  const stepsConfidence = window === "7d" ? 76 : window === "30d" ? 83 : 87;
 
   const base: PatternInsightJson[] = [
     {
       id: `demo-temporal-lunch-${windowTag}`,
-      title:
-        window === "7d"
-          ? "This week, logged lunch sits near midday glucose variability"
-          : window === "90d"
-            ? "Over 90 days, lunch logs still track midday glucose swings"
-            : "Midday glucose irregularity lines up with your lunch log time",
+      title: "Midday remains the highest-variability glucose window",
       description:
-        "There is a correlation between when you log lunch and glucose fluctuations around midday: your meal log's local hour overlaps the part of the day when glucose tends to be most changeable on the clock. The trace can rise, flatten, or dip from day to day, and swings vary in size—use that overlap as timing context, not as proof that every lunch drives the same post-meal curve.",
+        `In this ${featureContext.windowDays}-day window, the peak hourly mean sits around ${formatLocalHour12(temporal.peakHour ?? 13)} with a larger lunch-period rise than morning. That shape is consistent with mixed meal size and insulin timing variability rather than one identical response every day.`,
       type: "Temporal",
       confidencePercent: temporalConfidence,
       linkedSources: ["Dexcom"],
     },
     {
       id: `demo-steps-threshold-${windowTag}`,
-      title: "Higher step days skew toward lower average glucose",
+      title: "Higher-step days run lower average glucose",
       description:
-        "Daily step totals are compared against each day’s mean glucose: busier movement days run lower on average than sedentary ones in this window.",
+        stepsDelta != null
+          ? `Days at or above ${steps.activeDayStepsThreshold.toLocaleString()} steps average about ${Math.abs(stepsDelta).toFixed(1)} mg/dL lower glucose than less-active days, with ${steps.daysHighStepBucket} active vs ${steps.daysLowStepBucket} lower-step days represented.`
+          : "Daily step totals trend with lower mean glucose on more active days in this period.",
       type: "Steps",
       confidencePercent: stepsConfidence,
       linkedSources: ["Dexcom", "Apple Steps"],
     },
     {
       id: `demo-sessions-activity-${windowTag}`,
-      title: "Distance runs often lower glucose by ~35 mg/dL",
+      title: "Run sessions usually show downward glucose drift",
       description:
-        "In this demo view, Strava runs long enough to count as distance work tend to show glucose falling through the effort—often on the order of ~35 mg/dL versus the surrounding trace. Long pool swims (about 30+ minutes) lean the other way, with a modest rise. Illustrative sample pattern only; your own response to exercise will vary.",
+        runDelta != null
+          ? `Run-like sessions show an average glucose delta near ${runDelta.toFixed(1)} mg/dL over the session window, while non-run sessions are flatter to mildly rising. This mirrors common Type 1 patterns where aerobic effort increases insulin sensitivity.`
+          : "When run sessions are present, glucose generally trends downward during and shortly after aerobic activity.",
       type: "Sessions",
       confidencePercent: sessionsConfidence,
       linkedSources: ["Dexcom", "Strava"],
     },
     {
       id: `demo-temporal-weekend-${windowTag}`,
-      title: "Weekend averages run higher than weekdays",
+      title: "Weekends trend slightly higher than weekdays",
       description:
-        window === "7d"
-          ? "In a one-week lens this can flip faster day to day; expand to 30/90 days for stability."
-          : "Sat/Sun glucose runs slightly higher versus Mon–Fri; compare bars across a 30-day filter or use 7 days for a lighter view.",
+        weekendDelta == null
+          ? "Weekend vs weekday separation is visible but modest in this time window."
+          : `Weekend mean glucose is about ${weekendDelta.toFixed(1)} mg/dL ${
+              weekendDelta >= 0 ? "higher" : "lower"
+            } than weekdays, consistent with less predictable meal timing and activity cadence.`,
       type: "Temporal",
-      confidencePercent: window === "7d" ? 76 : 83,
+      confidencePercent: window === "7d" ? 72 : 82,
       linkedSources: ["Dexcom"],
     },
   ];
@@ -94,14 +103,21 @@ function buildFeatureContextForRange(
 ): PatternFeatureContext {
   const seed = DEMO_BG_CURVE_SEED;
   const ymds = eachYmdInclusive(rangeStartYmd, rangeEndYmd);
-  const stepThreshold = Math.max(5000, Math.min(prefs.targetStepsPerDay, 9000));
+  const stepThreshold = demoActiveStepsThresholdForWindow(prefs, window);
 
-  const temporal = computeDemoTemporalFromDays(ymds, seed);
+  const temporal = computeDemoTemporalFromDays(ymds, seed, {
+    patternWindow: window,
+    eveningHighMgdlThreshold: prefs.targetHighMgdl,
+  });
   const steps = computeDemoStepsStats(ymds, seed, prefs, stepThreshold);
-  const sessions = computeDemoSessionStats(ymds, seed);
+  const sessions = computeDemoSessionStats(ymds, seed, window);
 
-  const dailyMeans = ymds.map((y) => demoDailyMeanMgdl(y, seed));
-  const meanMgdl = dailyMeans.length ? mean(dailyMeans) : null;
+  const { tirInRangePercent, meanMgdl } = computeDemoWindowTirAndMean(
+    ymds,
+    seed,
+    prefs.targetLowMgdl,
+    prefs.targetHighMgdl,
+  );
   const glucoseReadingsCount = ymds.length * 288;
 
   const windowHint =
@@ -116,7 +132,7 @@ function buildFeatureContextForRange(
     calendarDaysInWindow: ymds.length,
     glucoseReadingsCount,
     meanMgdl,
-    tirInRangePercent: 74.2,
+    tirInRangePercent,
     tirGoalPercent: prefs.targetTirPercent,
     targetLowMgdl: prefs.targetLowMgdl,
     targetHighMgdl: prefs.targetHighMgdl,
@@ -139,8 +155,13 @@ function buildFeatureContextForRange(
     },
     evidence: {
       dailyGlucoseSteps: buildDemoDailyGlucoseSteps(ymds, seed),
-      sessionDeltas: buildDemoSessionDeltaPoints(ymds, seed),
-      cgmDaysSample: ymds.slice(-16),
+      sessionDeltas: buildDemoSessionDeltaPoints(ymds, seed, window),
+      cgmDaysSample:
+        window === "7d"
+          ? ymds.slice(-7)
+          : window === "30d"
+            ? ymds.slice(-12)
+            : ymds.slice(-16),
       hourlyCurvesByDay: buildDemoHourlyCurvesForDays(ymds, seed),
     },
   };
@@ -168,9 +189,9 @@ export function buildDemoPatternsFeatureJson(args: {
     rangeEndYmd,
   );
 
-  let patterns = selectPatternsForDisplay(demoPatterns(threshold, window));
+  let patterns = selectPatternsForDisplay(demoPatterns(threshold, window, featureContext));
   if (patterns.length === 0) {
-    patterns = selectPatternsForDisplay(demoPatterns(15, window));
+    patterns = selectPatternsForDisplay(demoPatterns(15, window, featureContext));
   }
 
   patterns = attachLearnMoreToPatterns(patterns, featureContext);

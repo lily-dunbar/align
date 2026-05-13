@@ -84,19 +84,42 @@ export function verifyDexcomState(state: string): DexcomStatePayload {
 
 export function getDexcomAuthorizeUrl() {
   return (
-    process.env.DEXCOM_AUTHORIZE_URL ?? "https://api.dexcom.com/v2/oauth2/login"
+    process.env.DEXCOM_AUTHORIZE_URL ?? "https://api.dexcom.com/v3/oauth2/login"
   );
 }
 
 export function getDexcomTokenUrl() {
   return (
-    process.env.DEXCOM_TOKEN_URL ?? "https://api.dexcom.com/v2/oauth2/token"
+    process.env.DEXCOM_TOKEN_URL ?? "https://api.dexcom.com/v3/oauth2/token"
   );
 }
 
-export function getDexcomRedirectUri() {
-  const explicit = process.env.DEXCOM_REDIRECT_URI;
-  if (explicit) return explicit;
+/** Normalize redirect URI so it matches Dexcom app registration (no trailing slash on path, no hash). */
+function normalizeDexcomRedirectUri(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return trimmed;
+  try {
+    const u = new URL(trimmed);
+    u.hash = "";
+    if (u.pathname.length > 1 && u.pathname.endsWith("/")) {
+      u.pathname = u.pathname.replace(/\/+$/, "");
+    }
+    return u.toString();
+  } catch {
+    return trimmed;
+  }
+}
 
-  return `${getPublicAppBaseUrl()}/api/integrations/dexcom/callback`;
+export function getDexcomRedirectUri() {
+  const explicit = process.env.DEXCOM_REDIRECT_URI?.trim();
+  const built = `${getPublicAppBaseUrl().replace(/\/$/, "")}/api/integrations/dexcom/callback`;
+  return normalizeDexcomRedirectUri(explicit || built);
+}
+
+/**
+ * Dexcom authorization only accepts `offline_access` for the authorize/login step.
+ * Extra scopes in env (e.g. legacy examples) cause "Invalid query params" / invalid_request on Dexcom's auth UI.
+ */
+export function getDexcomOAuthAuthorizeScope(): string {
+  return "offline_access";
 }

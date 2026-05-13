@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import {
   createDexcomState,
   getDexcomAuthorizeUrl,
+  getDexcomOAuthAuthorizeScope,
   getDexcomRedirectUri,
 } from "@/lib/dexcom/oauth";
 import { sanitizeOAuthReturnTo } from "@/lib/oauth-return-to";
@@ -41,10 +42,7 @@ export async function GET(request: Request) {
   authorizeUrl.searchParams.set("client_id", clientId);
   authorizeUrl.searchParams.set("redirect_uri", getDexcomRedirectUri());
   authorizeUrl.searchParams.set("response_type", "code");
-  authorizeUrl.searchParams.set(
-    "scope",
-    process.env.DEXCOM_SCOPE ?? "offline_access",
-  );
+  authorizeUrl.searchParams.set("scope", getDexcomOAuthAuthorizeScope());
   authorizeUrl.searchParams.set("state", state);
 
   return NextResponse.redirect(authorizeUrl);

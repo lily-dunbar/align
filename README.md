@@ -36,7 +36,9 @@ For Vercel production, set the same Clerk keys and `AUTH_URL=https://<your-domai
 
 ### Dexcom OAuth
 
-Register an app in [Dexcom Developer](https://developer.dexcom.com) and add `DEXCOM_CLIENT_ID` and `DEXCOM_CLIENT_SECRET` to `.env.local`. Production endpoints default to `api.dexcom.com` (authorize, token, and EGV data). For sandbox testing, set the `DEXCOM_*_URL` and `DEXCOM_API_BASE_URL` overrides to `sandbox-api.dexcom.com` and use a **sandbox** OAuth client.
+Register an app in [Dexcom Developer](https://developer.dexcom.com) and add `DEXCOM_CLIENT_ID` and `DEXCOM_CLIENT_SECRET` to `.env.local`. Production defaults use **v3** OAuth (`https://api.dexcom.com/v3/oauth2/login` and `.../v3/oauth2/token`). For sandbox testing, set the `DEXCOM_*_URL` and `DEXCOM_API_BASE_URL` overrides to `sandbox-api.dexcom.com` and use a **sandbox** OAuth client.
+
+Register a **redirect URI** that exactly matches your deployed callback, for example `https://<your-host>/api/integrations/dexcom/callback` (no trailing slash). Set `AUTH_URL` / `DEXCOM_REDIRECT_URI` so the app sends the same URI Dexcom has on file. The authorize request always sends `scope=offline_access` only (per Dexcom docs); extra scopes in env will break login.
 
 Open:
 
